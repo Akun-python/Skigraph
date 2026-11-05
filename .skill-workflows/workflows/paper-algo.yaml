@@ -1,0 +1,401 @@
+schema_version: 1
+id: paper-algo
+version: 1
+mode: agent
+
+# 计算机 / 机器学习算法创新论文流水线
+# 提示词 -> 理论方法(伪代码/mermaid/复杂度) -> 实现与基准 -> 消融 -> 统计 -> 图 -> 论文 -> 评审循环 -> 引用 -> 排版
+required_inputs: [prompt]
+entry: idea
+
+nodes:
+  - id: idea
+    type: agent
+    skill: scientific-brainstorming
+    task: |
+      Turn the prompt into an algorithm-paper thesis: state the computational
+      problem formally (input/output/objective), the limitation of current
+      methods, and 2-3 candidate technical contributions at the level of
+      mechanism (not "we use a transformer"). For each candidate, write the
+      falsifiable claim it must support and the cheapest experiment that would
+      refute it. Emit `problem_statement.md` and `novelty_hypotheses.json`
+      (id, claim, mechanism, refuting experiment, closest prior work).
+    inputs:
+      prompt: "{{input:prompt}}"
+    outputs:
+      - name: problem_statement
+        required: true
+      - name: novelty_hypotheses.json
+        required: true
+
+  - id: related
+    type: agent
+    skill: literature-review
+    task: |
+      Review the algorithmic literature relevant to the problem statement:
+      problem formulations, competing method families, standard benchmarks and
+      metrics, known lower bounds or impossibility results. Emit
+      `literature_review.md` with a related-work section ready for the paper and
+      an explicit statement of what is genuinely new in this work (and what is
+      only an engineering combination).
+    inputs:
+      problem_statement: "{{artifact:idea:problem_statement}}"
+      novelty_hypotheses: "{{artifact:idea:novelty_hypotheses.json}}"
+    outputs:
+      - name: literature_review
+        required: true
+
+  - id: approach
+    type: agent
+    skill: markdown-mermaid-writing
+    task: |
+      Specify the method precisely enough to implement twice: formal definitions,
+      algorithm block (pseudocode), a mermaid architecture/flow diagram, data
+      structures, hyperparameters with ranges, and complexity analysis
+      (time/space, per-epoch and per-inference). State every assumption and the
+      failure mode it implies. Emit `method_description.md`.
+    inputs:
+      problem_statement: "{{artifact:idea:problem_statement}}"
+      literature_review: "{{artifact:related:literature_review}}"
+    outputs:
+      - name: method_description
+        required: true
+
+  - id: protocol
+    type: agent
+    skill: experimental-design
+    task: |
+      Design the experimental protocol that would convince a hostile reviewer:
+      datasets (with sizes/splits/licences), baselines (strongest published, plus
+      naive), metrics with definitions and aggregation, seeds and number of runs,
+      compute budget, statistical tests, and a pre-registered ablation matrix that
+      isolates each novelty claim. Emit `experiment_protocol.md` and a machine
+      readable `experiment_protocol.json`.
+    inputs:
+      method_description: "{{artifact:approach:method_description}}"
+      literature_review: "{{artifact:related:literature_review}}"
+    outputs:
+      - name: experiment_protocol
+        required: true
+      - name: experiment_protocol.json
+        required: true
+
+  - id: implement
+    type: agent
+    skill: scikit-learn
+    task: |
+      Implement the method and the full comparison matrix from the protocol.
+      Write runnable code plus a reproduction script; record every run's config,
+      seed and environment. Emit `experiment_code.md` (module layout + entry
+      point + how to reproduce) and `benchmark_results.json` with one record per
+      (method, dataset, metric, seed) and exact scores as measured. Do not
+      fabricate numbers: if a configuration could not be run, record it as
+      `not_run` with the reason.
+    inputs:
+      method_description: "{{artifact:approach:method_description}}"
+      experiment_protocol: "{{artifact:protocol:experiment_protocol}}"
+    outputs:
+      - name: experiment_code
+        required: true
+      - name: benchmark_results.json
+        required: true
+
+  - id: eda
+    type: agent
+    skill: exploratory-data-analysis
+    task: |
+      Audit the benchmark results before interpreting them: distribution of
+      scores per dataset, variance across seeds, outliers, suspiciously small
+      gaps, leakage risks, and whether any baseline is under-tuned. Emit
+      `data_profile.md` with the checks you ran and a verdict on which
+      comparisons are statistically meaningful.
+    inputs:
+      benchmark_results: "{{artifact:implement:benchmark_results.json}}"
+    outputs:
+      - name: data_profile
+        required: true
+
+  - id: ablation
+    type: agent
+    skill: scientific-critical-thinking
+    task: |
+      Execute and analyse the ablation matrix: for each claimed novelty, the run
+      with that component removed. Report efficiency (parameters, FLOPs,
+      latency, memory), failure cases, and whether the gain survives removal of
+      each component. Flag any claim the ablations do NOT support. Emit
+      `ablation_report.md`.
+    inputs:
+      benchmark_results: "{{artifact:implement:benchmark_results.json}}"
+      experiment_code: "{{artifact:implement:experiment_code}}"
+      method_description: "{{artifact:approach:method_description}}"
+      data_profile: "{{artifact:eda:data_profile}}"
+    outputs:
+      - name: ablation_report
+        required: true
+
+  - id: stats
+    type: agent
+    skill: statistical-analysis
+    task: |
+      Run the statistical tests chosen in the protocol (paired tests across
+      seeds, bootstrap CIs, effect sizes, multiple-comparison correction) and
+      report them with uncertainty. Separate exploratory from confirmatory
+      findings. Emit `analysis_report.md` and `analysis_report.json`.
+    inputs:
+      benchmark_results: "{{artifact:implement:benchmark_results.json}}"
+      ablation_report: "{{artifact:ablation:ablation_report}}"
+    outputs:
+      - name: analysis_report
+        required: true
+      - name: analysis_report.json
+        required: true
+
+  - id: figures
+    type: agent
+    skill: scientific-visualization
+    task: |
+      Produce publication-grade figures from the measured data: main results
+      table/figure, scaling or efficiency plot, ablation bar chart, and an
+      error-bar/CI panel. Use a colourblind-safe palette, readable fonts, and
+      vector output. Emit `figures.md` listing every figure with its caption,
+      source data file, and the script that regenerates it.
+    inputs:
+      analysis_report: "{{artifact:stats:analysis_report}}"
+      ablation_report: "{{artifact:ablation:ablation_report}}"
+    outputs:
+      - name: figures
+        required: true
+
+  - id: draft
+    type: agent
+    skill: scientific-writing
+    task: |
+      Write the algorithm paper: abstract, introduction (problem + gap +
+      contributions), related work, method (with the pseudocode and diagram),
+      experimental setup, results (only claims the statistics support), ablation
+      study, limitations, threats to validity, and conclusion. Emit
+      `manuscript.md` with every number traceable to `benchmark_results.json` /
+      `analysis_report.json`.
+    inputs:
+      literature_review: "{{artifact:related:literature_review}}"
+      method_description: "{{artifact:approach:method_description}}"
+      analysis_report: "{{artifact:stats:analysis_report}}"
+      figures: "{{artifact:figures:figures}}"
+    outputs:
+      - name: manuscript
+        required: true
+
+  - id: review
+    type: agent
+    skill: peer-review
+    task: |
+      Review the manuscript as a top-venue reviewer would: novelty vs the
+      literature, correctness of the complexity and statistical claims,
+      fairness of baselines, reproducibility, and clarity. Emit
+      `review_report.md` with severity-tagged items and
+      `manuscript_under_review.md` (the snapshot you reviewed). In
+      `node_result.json` set `decision` to "accept" if the paper is
+      publication-ready, otherwise "revise".
+    inputs:
+      manuscript: "{{artifact:draft:manuscript}}"
+    outputs:
+      - name: review_report
+        required: true
+      - name: manuscript_under_review
+        required: true
+
+  - id: revise
+    type: agent
+    skill: scientific-writing
+    task: |
+      Revise to resolve every review item, adding experiments or analyses where
+      the reviewer demands evidence rather than only rewriting prose. Emit
+      `revised_manuscript.md` (full manuscript) and `revision_notes.md` mapping
+      each review item to the concrete change.
+    inputs:
+      prompt: "{{input:prompt}}"
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      review_report: "{{artifact:review:review_report}}"
+    outputs:
+      - name: revised_manuscript
+        required: true
+      - name: revision_notes
+        required: true
+
+  - id: citations
+    type: agent
+    skill: citation-management
+    task: |
+      Verify the bibliography of the accepted manuscript: resolve in-text
+      citations to DOI/arXiv IDs, emit `references.bib`, and write
+      `citation_audit.md` listing unverifiable or duplicate entries. Ensure
+      every baseline and claimed prior result is cited to a real paper.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+    outputs:
+      - name: bibliography
+        required: true
+      - name: citation_audit
+        required: true
+
+  - id: format
+    type: agent
+    skill: venue-templates
+    task: |
+      Assemble the submission-ready paper using a venue template matching the
+      field (NeurIPS/ICML/ICLR or ACM/IEEE fallback): camera-ready layout,
+      figures placed, bibliography resolved, appendix for the full experiment
+      protocol, and an anonymity check. Emit `final_paper.tex` plus
+      `submission_checklist.md` (page limit, supplementary material, code/data
+      availability, ethics statement).
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      bibliography: "{{artifact:citations:bibliography}}"
+      citation_audit: "{{artifact:citations:citation_audit}}"
+      figures: "{{artifact:figures:figures}}"
+      revision_notes:
+        value: "{{artifact:revise:revision_notes}}"
+        required: false
+    outputs:
+      - name: final_paper.tex
+        required: true
+      - name: final_paper.pdf
+        required: true
+      - name: paper_page_count.json
+        required: true
+      - name: submission_checklist
+        required: true
+
+
+
+  - id: release_gate
+    type: agent
+    skill: scientific-critical-thinking
+    task: |
+      Inspect the actual final_paper.pdf, final_paper.tex, page-count JSON,
+      figures, bibliography and manuscript. Run pdfinfo and pdftotext. Verify
+      native compilation, 15-25 pages without duplicated filler, at least 8,000
+      main-text words, at least three distinct scientific figures or tables,
+      five verified references, and Methods/Results/Limitations/Reproducibility
+      sections. Write release_gate_report.md with measured counts and exact
+      remediation. Set decision to pass only when every hard check passes;
+      otherwise set decision to revise.
+    inputs:
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+      manuscript:
+        value: "{{artifact:review:manuscript_under_review}}"
+        required: false
+    outputs:
+      - name: release_gate_report
+        required: true
+
+  - id: release_pass
+    type: agent
+    skill: scientific-writing
+    task: |
+      Confirm the release gate passed. Write release_manifest.md with the
+      final PDF, LaTeX source, page count, figures and gate report paths.
+    inputs:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+    outputs:
+      - name: release_manifest
+        required: true
+    terminal: true
+
+edges:
+  - from: idea
+    to: related
+    priority: 10
+  - from: related
+    to: approach
+    priority: 10
+  - from: approach
+    to: protocol
+    priority: 10
+  - from: protocol
+    to: implement
+    priority: 10
+  - from: implement
+    to: eda
+    priority: 10
+  - from: eda
+    to: ablation
+    priority: 10
+  - from: ablation
+    to: stats
+    priority: 10
+  - from: stats
+    to: figures
+    priority: 10
+  - from: figures
+    to: draft
+    priority: 10
+  - from: draft
+    to: review
+    priority: 10
+
+  - from: review
+    to: citations
+    when: 'result.decision == "accept"'
+    priority: 30
+  - from: review
+    to: revise
+    when: 'result.decision == "revise"'
+    priority: 20
+
+  - from: revise
+    to: review
+    priority: 10
+    bind:
+      manuscript: "{{artifact:revise:revised_manuscript}}"
+    loop:
+      id: revision-cycle
+      max_iterations: 3
+
+  - from: citations
+    to: format
+    priority: 10
+  - from: format
+    to: release_gate
+    priority: 10
+  - from: release_gate
+    to: release_pass
+    when: 'result.decision == "pass"'
+    priority: 30
+  - from: release_gate
+    to: draft
+    when: 'result.decision == "revise"'
+    priority: 20
+    bind:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-cycle
+      max_iterations: 2
+
+budgets:
+  max_visits: 40
+  max_agent_turns: 40
+  max_duration_ms: 28800000

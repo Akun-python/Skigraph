@@ -1,0 +1,313 @@
+schema_version: 1
+id: paper-survey
+version: 1
+mode: agent
+
+# 综述 / 观点类论文流水线
+# 重点在覆盖度与分类框架，而不是新实验
+required_inputs: [prompt]
+entry: scope
+
+nodes:
+  - id: scope
+    type: agent
+    skill: scientific-brainstorming
+    task: |
+      Fix the survey's boundary: the question it answers, the sub-questions it
+      must cover, the time window, the communities it draws from, and what it
+      explicitly excludes. Propose 2-3 candidate organising structures (by
+      method family, by problem, by chronology) and pick one with a stated
+      reason. Emit `scope.md` and `scope.json` (topic, sub-questions,
+      inclusion/exclusion, chosen structure).
+    inputs:
+      prompt: "{{input:prompt}}"
+    outputs:
+      - name: scope
+        required: true
+      - name: scope.json
+        required: true
+
+  - id: literature
+    type: agent
+    skill: literature-review
+    task: |
+      Build the corpus at scale: multi-source queries (arXiv, Semantic Scholar,
+      OpenAlex, PubMed, venue proceedings), deduplication, and a coverage
+      snapshot per year and per sub-area. Map the method families and identify
+      the canonical papers and the recent frontier. Emit `literature_review.md`
+      with a paper inventory table (id, year, venue, family, claim, limitation)
+      and `corpus.json`.
+    inputs:
+      scope: "{{artifact:scope:scope}}"
+    outputs:
+      - name: literature_review
+        required: true
+      - name: corpus.json
+        required: true
+
+  - id: evidence
+    type: agent
+    skill: paper-lookup
+    task: |
+      Fill the gaps the first pass left: targeted lookups for the papers that
+      define each family, for contradictions between papers, and for claims that
+      are repeatedly asserted without a primary source. Record for each what the
+      paper actually demonstrates vs. what is commonly attributed to it. Emit
+      `evidence_notes.md` and `claims_table.json` (claim, source, evidence
+      strength, status: supported / contested / unsupported).
+    inputs:
+      scope: "{{artifact:scope:scope}}"
+      literature_review: "{{artifact:literature:literature_review}}"
+    outputs:
+      - name: evidence_notes
+        required: true
+      - name: claims_table.json
+        required: true
+
+  - id: taxonomy
+    type: agent
+    skill: scientific-critical-thinking
+    task: |
+      Build the taxonomy and the critical synthesis: axes of variation that
+      actually distinguish the families, a comparison table across those axes,
+      the causal story of why the field moved the way it did, and the open
+      problems with a reason each is still open. Separate consensus from
+      contested claims using the claims table. Emit `taxonomy.md` and
+      `synthesis_matrix.md`.
+    inputs:
+      literature_review: "{{artifact:literature:literature_review}}"
+      evidence_notes: "{{artifact:evidence:evidence_notes}}"
+      corpus: "{{artifact:literature:corpus.json}}"
+    outputs:
+      - name: taxonomy
+        required: true
+      - name: synthesis_matrix
+        required: true
+
+  - id: outline
+    type: agent
+    skill: markdown-mermaid-writing
+    task: |
+      Produce the section-by-section outline with the argument each section
+      carries, plus the visual plan: taxonomy tree, timeline, and
+      capability-comparison matrix as Mermaid. Emit `outline.md` and
+      `figures.md`. Every section must name the papers it will draw on.
+    inputs:
+      taxonomy: "{{artifact:taxonomy:taxonomy}}"
+      synthesis_matrix: "{{artifact:taxonomy:synthesis_matrix}}"
+    outputs:
+      - name: outline
+        required: true
+      - name: figures
+        required: true
+
+  - id: draft
+    type: agent
+    skill: scientific-writing
+    task: |
+      Write the survey following the outline: framing introduction, taxonomy
+      presented through its axes rather than as a list, per-family analysis with
+      the trade-offs made explicit, cross-cutting comparison, open problems with
+      a concrete reason and a suggested attack for each. Attribute every claim
+      to its source and mark contested ones as contested. Emit `manuscript.md`.
+    inputs:
+      outline: "{{artifact:outline:outline}}"
+      literature_review: "{{artifact:literature:literature_review}}"
+    outputs:
+      - name: manuscript
+        required: true
+
+  - id: review
+    type: agent
+    skill: peer-review
+    task: |
+      Review as a survey-area expert: coverage gaps (which family or venue is
+      missing), fairness of the comparison axes, whether the taxonomy carves
+      reality or retrofits a narrative, unsupported claims, and whether the open
+      problems are genuinely open. Emit `review_report.md` and
+      `manuscript_under_review.md`. Set `decision` to "accept" or "revise".
+    inputs:
+      manuscript: "{{artifact:draft:manuscript}}"
+    outputs:
+      - name: review_report
+        required: true
+      - name: manuscript_under_review
+        required: true
+
+  - id: revise
+    type: agent
+    skill: scientific-writing
+    task: |
+      Revise to resolve every review item, doing additional literature retrieval
+      where the reviewer identifies a coverage gap rather than only rewording.
+      Emit `revised_manuscript.md` and `revision_notes.md`.
+    inputs:
+      prompt: "{{input:prompt}}"
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      review_report: "{{artifact:review:review_report}}"
+    outputs:
+      - name: revised_manuscript
+        required: true
+      - name: revision_notes
+        required: true
+
+  - id: citations
+    type: agent
+    skill: citation-management
+    task: |
+      Verify the (large) bibliography: dedupe, resolve DOIs, normalise venue
+      names, and emit `references.bib` plus `citation_audit.md` listing any
+      reference that could not be verified and any paper cited for a claim it
+      does not support.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+    outputs:
+      - name: bibliography
+        required: true
+      - name: citation_audit
+        required: true
+
+  - id: format
+    type: agent
+    skill: venue-templates
+    task: |
+      Assemble the submission package for a survey venue (ACM CSUR /
+      Foundations and Trends / journal review): section structure, figure
+      placement, tables, and a coverage appendix listing the corpus with family
+      assignments. Emit `final_paper.tex` and `coverage_appendix.md`.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      bibliography: "{{artifact:citations:bibliography}}"
+      citation_audit: "{{artifact:citations:citation_audit}}"
+      figures: "{{artifact:outline:figures}}"
+      revision_notes:
+        value: "{{artifact:revise:revision_notes}}"
+        required: false
+    outputs:
+      - name: final_paper.tex
+        required: true
+      - name: final_paper.pdf
+        required: true
+      - name: paper_page_count.json
+        required: true
+      - name: coverage_appendix
+        required: true
+
+
+
+  - id: release_gate
+    type: agent
+    skill: scientific-critical-thinking
+    task: |
+      Inspect the actual final_paper.pdf, final_paper.tex, page-count JSON,
+      figures, bibliography and manuscript. Run pdfinfo and pdftotext. Verify
+      native compilation, 15-25 pages without duplicated filler, at least 8,000
+      main-text words, at least three distinct scientific figures or tables,
+      five verified references, and Methods/Results/Limitations/Reproducibility
+      sections. Write release_gate_report.md with measured counts and exact
+      remediation. Set decision to pass only when every hard check passes;
+      otherwise set decision to revise.
+    inputs:
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+      manuscript:
+        value: "{{artifact:review:manuscript_under_review}}"
+        required: false
+    outputs:
+      - name: release_gate_report
+        required: true
+
+  - id: release_pass
+    type: agent
+    skill: scientific-writing
+    task: |
+      Confirm the release gate passed. Write release_manifest.md with the
+      final PDF, LaTeX source, page count, figures and gate report paths.
+    inputs:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+    outputs:
+      - name: release_manifest
+        required: true
+    terminal: true
+
+edges:
+  - from: scope
+    to: literature
+    priority: 10
+  - from: literature
+    to: evidence
+    priority: 10
+  - from: evidence
+    to: taxonomy
+    priority: 10
+  - from: taxonomy
+    to: outline
+    priority: 10
+  - from: outline
+    to: draft
+    priority: 10
+  - from: draft
+    to: review
+    priority: 10
+  - from: review
+    to: citations
+    when: 'result.decision == "accept"'
+    priority: 30
+  - from: review
+    to: revise
+    when: 'result.decision == "revise"'
+    priority: 20
+  - from: revise
+    to: review
+    priority: 10
+    bind:
+      manuscript: "{{artifact:revise:revised_manuscript}}"
+    loop:
+      id: revision-cycle
+      max_iterations: 3
+  - from: citations
+    to: format
+    priority: 10
+  - from: format
+    to: release_gate
+    priority: 10
+  - from: release_gate
+    to: release_pass
+    when: 'result.decision == "pass"'
+    priority: 30
+  - from: release_gate
+    to: draft
+    when: 'result.decision == "revise"'
+    priority: 20
+    bind:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-cycle
+      max_iterations: 2
+
+budgets:
+  max_visits: 45
+  max_agent_turns: 45
+  max_duration_ms: 43200000

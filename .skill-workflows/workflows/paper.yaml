@@ -1,0 +1,418 @@
+schema_version: 1
+id: paper
+version: 1
+mode: agent
+
+# 一句话提示词 -> 完整论文（K-Dense scientific-agent-skills 组装）
+# 用法:
+#   skill-graph run paper '{"prompt": "你的研究主题/问题"}'
+required_inputs: [prompt]
+entry: scope
+
+nodes:
+  # ── 1. 研究设计：把原始提示词变成可检验的研究计划 ───────────────────────────
+  - id: scope
+    type: agent
+    skill: hypothesis-generation
+    task: |
+      Turn the user's raw prompt into a rigorous research plan: a precise research
+      question, falsifiable hypotheses, at least two competing explanations,
+      discriminating predictions, and a pre-registration-sensible analysis outline.
+      Write `research_plan.md` in the output directory. In `node_result.json` set
+      `decision` to "quantitative" when the plan needs empirical data analysis,
+      otherwise "qualitative".
+    inputs:
+      prompt: "{{input:prompt}}"
+    outputs:
+      - name: research_plan
+        required: true
+
+  # ── 2. 文献：系统综述 + 相关工作 + 研究缺口 ────────────────────────────────
+  - id: literature
+    type: agent
+    skill: literature-review
+    task: |
+      Conduct a literature review grounded in the research plan. Cover the core
+      literature, competing positions and open gaps. Write `literature_review.md`
+      containing: scope and search strategy, thematic synthesis, a related-work
+      section ready for the manuscript, and an explicit gap statement that the
+      paper will fill. Record every cited work with verifiable identifiers.
+    inputs:
+      prompt: "{{input:prompt}}"
+      research_plan: "{{artifact:scope:research_plan}}"
+    outputs:
+      - name: literature_review
+        required: true
+
+  # ── 3. 方法：实验/研究设计，并决定是否需要定量分析分支 ──────────────────────
+  - id: methods
+    type: agent
+    skill: experimental-design
+    skills: [experimental-design, statistical-power]
+    task: |
+      Design the study that tests the plan's hypotheses, using the literature
+      review to justify choices. Specify variables, design type (DOE / factorial /
+      observational), randomization and blocking, sample size and power, controls,
+      and the planned statistical analysis. Write `methods.md` as a manuscript-ready
+      Methods section plus an appendix of design parameters.
+      In `node_result.json` set `decision` to "quantitative" when the design
+      requires analyzing a dataset, otherwise "qualitative".
+    inputs:
+      prompt: "{{input:prompt}}"
+      research_plan: "{{artifact:scope:research_plan}}"
+      literature_review: "{{artifact:literature:literature_review}}"
+    outputs:
+      - name: methods
+        required: true
+
+  # ── 4. 定量分支：数据画像 ────────────────────────────────────────────────
+  - id: eda
+    type: agent
+    skill: exploratory-data-analysis
+    task: |
+      Locate the dataset named in the prompt and/or methods and profile it before
+      analysis: shape, dtypes, missingness, distributions, outliers, duplicates,
+      leakage risks and quality flags. If the approved research plan explicitly
+      calls for a fully synthetic benchmark and no external dataset is supplied,
+      generate the synthetic dataset from the specified data-generating process
+      with a reproducible seed, save `dataset.csv` and `data_generation.py`, and
+      profile that real generated dataset. Otherwise, if no dataset is available,
+      submit status "needs_input" asking for the exact data path instead of
+      inventing data. Write `data_profile.md` including the resolved dataset path
+      and generation/provenance details when applicable.
+    inputs:
+      prompt: "{{input:prompt}}"
+      methods: "{{artifact:methods:methods}}"
+    outputs:
+      - name: data_profile
+        required: true
+      - name: dataset.csv
+        required: false
+      - name: data_generation.py
+        required: false
+
+  # ── 5. 定量分支：统计分析 ────────────────────────────────────────────────
+  - id: stats
+    type: agent
+    skill: statistical-analysis
+    skills: [statistical-analysis, scientific-critical-thinking]
+    task: |
+      Execute the analysis plan on the profiled dataset: assumption checks, the
+      pre-registered tests, effect sizes with confidence intervals, multiple
+      comparison control, and sensitivity/robustness checks. Write
+      `analysis_report.md` with a results-subsection-ready narrative plus a table
+      of estimates, and save any analysis scripts you ran.
+    inputs:
+      methods: "{{artifact:methods:methods}}"
+      data_profile: "{{artifact:eda:data_profile}}"
+      dataset:
+        value: "{{artifact:eda:dataset.csv}}"
+        required: false
+    outputs:
+      - name: analysis_report
+        required: true
+
+  # ── 6. 定量分支：出版级图表 ──────────────────────────────────────────────
+  - id: figures
+    type: agent
+    skill: scientific-visualization
+    task: |
+      Produce publication-quality scientific figures from the measured analysis
+      (not decorative placeholders): at least a primary results figure, an
+      uncertainty/error-bar or confidence-interval figure, and an ablation or
+      sensitivity figure when applicable. Use a colourblind-safe palette,
+      labeled axes, units, sample sizes, uncertainty bars, reproducible plotting
+      code, and 300-dpi PNG/PDF/SVG exports. Save all images and plotting code
+      in a `figures/` subdirectory and write `figures.md` listing each file,
+      caption, source artifact, claim supported, and the exact command used to
+      regenerate it.
+    inputs:
+      analysis_report: "{{artifact:stats:analysis_report}}"
+      data_profile: "{{artifact:eda:data_profile}}"
+      dataset:
+        value: "{{artifact:eda:dataset.csv}}"
+        required: false
+    outputs:
+      - name: figures
+        required: true
+
+  # ── 7. 撰写初稿 ─────────────────────────────────────────────────────────
+  - id: draft
+    type: agent
+    skill: scientific-writing
+    skills: [scientific-writing, markdown-mermaid-writing]
+    task: |
+      Write a complete long-form manuscript draft in IMRaD form (Abstract,
+      Introduction, Related Work, Methods, Experimental Setup, Results,
+      Statistical Analysis, Ablations/Sensitivity, Discussion, Limitations,
+      Reproducibility, Conclusion): at least 8,000 words when the evidence
+      supports it. Every number must trace to the analysis artifacts; every
+      figure must be referenced and have a caption; no fabricated citations.
+      Write `manuscript_draft.md` and `claim_evidence.csv` mapping each headline
+      claim to its supporting artifact.
+    inputs:
+      prompt: "{{input:prompt}}"
+      research_plan: "{{artifact:scope:research_plan}}"
+      literature_review: "{{artifact:literature:literature_review}}"
+      methods: "{{artifact:methods:methods}}"
+    outputs:
+      - name: manuscript_draft
+        required: true
+
+  # ── 8. 内部同行评审 ────────────────────────────────────────────────────
+  - id: review
+    type: agent
+    skill: peer-review
+    task: |
+      Review the manuscript as a demanding but fair referee: validity of claims,
+      evidence-to-claim alignment, methodological rigor, statistical
+      reproducibility, missing related work, clarity and structure.
+      Copy the exact manuscript you reviewed to `manuscript_under_review.md`
+      in the output directory (this snapshot is the version downstream stages use).
+      Write `review_report.md` with numbered, actionable issues.
+      In `node_result.json` set `decision` to "accept" when the manuscript is
+      publication-ready, otherwise "revise".
+    inputs:
+      prompt: "{{input:prompt}}"
+      manuscript: "{{artifact:draft:manuscript_draft}}"
+    outputs:
+      - name: review_report
+        required: true
+      - name: manuscript_under_review
+        required: true
+
+  # ── 9. 修订（循环回 review，最多 3 轮） ──────────────────────────────────
+  - id: revise
+    type: agent
+    skill: scientific-writing
+    task: |
+      Revise the manuscript to resolve every issue in the review report: fix
+      logic, tighten claims to the evidence, add missing analysis or citations,
+      improve structure and prose. Do not silently drop reviewer concerns.
+      Write `revised_manuscript.md` (full manuscript, not a diff) and
+      `revision_notes.md` mapping each review item to the change made.
+    inputs:
+      prompt: "{{input:prompt}}"
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      review_report: "{{artifact:review:review_report}}"
+      figures:
+        value: "{{artifact:figures:figures}}"
+        required: false
+    outputs:
+      - name: revised_manuscript
+        required: true
+      - name: revision_notes
+        required: true
+
+  # ── 10. 参考文献与引用审计 ───────────────────────────────────────────────
+  - id: citations
+    type: agent
+    skill: citation-management
+    task: |
+      Build a verified bibliography for the accepted manuscript: resolve every
+      in-text citation to a real DOI/PMID where possible, emit `references.bib`
+      in BibTeX, and write `citation_audit.md` listing unresolved or
+      unverifiable references, style consistency, and duplicate entries.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+    outputs:
+      - name: bibliography
+        required: true
+      - name: citation_audit
+        required: true
+
+  # ── 11. LaTeX 排版 ──────────────────────────────────────────────────────
+  - id: format
+    type: agent
+    skill: venue-templates
+    skills: [venue-templates, scientific-writing]
+    task: |
+      Produce a complete submission package, not a summary: convert the full
+      manuscript into `final_paper.tex`, include every scientific figure from
+      the figures artifact with captions and labels, include all tables,
+      references and supplementary methods, and target approximately 20 pages
+      (at least 8,000 manuscript words or an equivalent dense technical paper).
+      Compile it to `final_paper.pdf`; run `pdfinfo` and report the page count.
+      If the environment has no TeX compiler, create the standards-compliant
+      LaTeX source and use the repository's PDF fallback, clearly marking the
+      backend and compile limitation in `submission_checklist.md`. Emit
+      `final_paper.tex`, `final_paper.pdf`, `paper_page_count.json`, and
+      `submission_checklist.md`. The PDF is a required deliverable. Do not pad
+      the page count with duplicated filler: the main text must be at least
+      8,000 words and the PDF must contain at least three distinct scientific
+      figures or tables with captions and at least five verified references.
+    inputs:
+      prompt: "{{input:prompt}}"
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      bibliography: "{{artifact:citations:bibliography}}"
+      citation_audit: "{{artifact:citations:citation_audit}}"
+      figures:
+        value: "{{artifact:figures:figures}}"
+        required: false
+      revision_notes:
+        value: "{{artifact:revise:revision_notes}}"
+        required: false
+    outputs:
+      - name: final_paper.tex
+        required: true
+      - name: final_paper.pdf
+        required: true
+      - name: paper_page_count.json
+        required: true
+      - name: submission_checklist
+        required: true
+
+  # ── 12. 发布质量门：失败则回到 draft 修订 ────────────────────────────────
+  - id: release_gate
+    type: agent
+    skill: scientific-critical-thinking
+    task: |
+      Act as the final publication-quality gate. Inspect the actual
+      final_paper.pdf, final_paper.tex, paper_page_count.json, figures,
+      bibliography and full manuscript. Run pdfinfo and pdftotext. Verify:
+      native LaTeX compilation and a readable PDF; 15-25 pages without
+      duplicated filler; at least 8,000 main-text words; at least three
+      distinct scientific figures/tables with captions; every numerical
+      headline claim traceable to an analysis artifact; at least five DOI,
+      arXiv or PMID references; and Methods, Results, Limitations,
+      Reproducibility and data/code availability sections. Write
+      `release_gate_report.md` with measured counts, failed checks and exact
+      remediation instructions. Set decision to `pass` only when every hard
+      check passes; otherwise set decision to `revise`.
+    inputs:
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+      figures:
+        value: "{{artifact:figures:figures}}"
+        required: false
+      bibliography: "{{artifact:citations:bibliography}}"
+      manuscript:
+        value: "{{artifact:review:manuscript_under_review}}"
+        required: false
+    outputs:
+      - name: release_gate_report
+        required: true
+
+  - id: release_pass
+    type: agent
+    skill: scientific-writing
+    task: |
+      Confirm the release gate passed. Copy the gate report, final PDF path,
+      LaTeX path, page count, figure manifest and checksum information into
+      `release_manifest.md`. Do not rewrite the paper or invent new claims.
+    inputs:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+    outputs:
+      - name: release_manifest
+        required: true
+    terminal: true
+
+edges:
+  - from: scope
+    to: literature
+    priority: 10
+
+  - from: literature
+    to: methods
+    priority: 10
+
+  # 定量分支：需要数据分析
+  - from: methods
+    to: eda
+    when: 'result.decision == "quantitative"'
+    priority: 20
+
+  # 定性/概念分支：直接进入写作
+  - from: methods
+    to: draft
+    when: 'result.decision != "quantitative"'
+    priority: 10
+
+  - from: eda
+    to: stats
+    priority: 10
+
+  - from: stats
+    to: figures
+    priority: 10
+
+  # 定量路径汇入写作：把分析产物随边绑定进去
+  - from: figures
+    to: draft
+    priority: 10
+    bind:
+      analysis_report: "{{artifact:stats:analysis_report}}"
+      figures: "{{artifact:figures:figures}}"
+
+  - from: draft
+    to: review
+    priority: 10
+
+  # 评审通过
+  - from: review
+    to: citations
+    when: 'result.decision == "accept"'
+    priority: 30
+
+  # 评审要求修改
+  - from: review
+    to: revise
+    when: 'result.decision == "revise"'
+    priority: 20
+
+  # 修订 -> 重新评审：这是循环边（每次带回新的修订稿路径，满足 input 必须变化）
+  - from: revise
+    to: review
+    priority: 10
+    bind:
+      manuscript: "{{artifact:revise:revised_manuscript}}"
+    loop:
+      id: revision-cycle
+      max_iterations: 3
+
+  - from: citations
+    to: format
+    priority: 10
+  - from: format
+    to: release_gate
+    priority: 10
+  - from: release_gate
+    to: release_pass
+    when: 'result.decision == "pass"'
+    priority: 30
+  - from: release_gate
+    to: draft
+    when: 'result.decision == "revise"'
+    priority: 20
+    bind:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-cycle
+      max_iterations: 2
+
+budgets:
+  max_visits: 40
+  max_agent_turns: 40
+  max_duration_ms: 28800000

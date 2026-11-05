@@ -1,0 +1,450 @@
+schema_version: 1
+id: paper-medical
+version: 1
+mode: agent
+
+# 医学论文分析流水线
+# 临床研究(队列/试验): PICO -> 设计+样本量 -> 队列构建 -> 统计模型 -> 生存分析 -> 图 -> 论文
+# 证据综合(Meta 分析): PICO -> 设计 -> 多库检索 -> 合并效应量 -> 论文
+# 两条路径都汇入写作 -> 评审循环 -> 引用核对 -> 期刊排版 + 报告规范清单
+required_inputs: [prompt]
+entry: question
+
+nodes:
+  - id: question
+    type: agent
+    skill: clinical-decision-support
+    task: |
+      Convert the prompt into a clinically answerable question using PICO(
+      PICOTS): population with explicit inclusion/exclusion, intervention or
+      exposure, comparator, outcomes with measurement instrument and time
+      horizon, study designs admissible. State the clinical decision the answer
+      would change. Emit `clinical_question.md` and `pico.json`.
+    inputs:
+      prompt: "{{input:prompt}}"
+    outputs:
+      - name: clinical_question
+        required: true
+      - name: pico.json
+        required: true
+
+  - id: literature
+    type: agent
+    skill: literature-review
+    task: |
+      Review the clinical evidence base for the PICO: existing trials and cohort
+      studies, prior systematic reviews, current guidelines, and known
+      confounders. Report effect sizes with CIs where available, disagreement
+      between studies, and the residual uncertainty. Emit `literature_review.md`.
+    inputs:
+      clinical_question: "{{artifact:question:clinical_question}}"
+    outputs:
+      - name: literature_review
+        required: true
+
+  - id: design
+    type: agent
+    skill: experimental-design
+    task: |
+      Design the study or synthesis: design type (cohort/case-control/RCT/meta-
+      analysis of observational or interventional studies), eligibility
+      criteria, exposure and outcome definitions, confounders and adjustment
+      set, missing-data strategy, sensitivity analyses, and the reporting
+      guideline that applies (STROBE, CONSORT, PRISMA, TRIPOD). Emit
+      `study_protocol.md` and `study_protocol.json`. In `node_result.json` set
+      `decision` to "meta" when the work is a systematic review / meta-analysis,
+      otherwise "clinical".
+    inputs:
+      clinical_question: "{{artifact:question:clinical_question}}"
+      literature_review: "{{artifact:literature:literature_review}}"
+    outputs:
+      - name: study_protocol
+        required: true
+      - name: study_protocol.json
+        required: true
+
+  # ── 临床路径 ────────────────────────────────────────────────────────────
+  - id: power
+    type: agent
+    skill: statistical-power
+    task: |
+      Justify the sample size: the minimal clinically important difference, the
+      assumed event rate / SD from the literature, alpha, power, allocation
+      ratio, and attrition inflation. Emit `sample_size.md` showing the
+      calculation and the assumptions it is sensitive to.
+    inputs:
+      study_protocol: "{{artifact:design:study_protocol}}"
+      literature_review: "{{artifact:literature:literature_review}}"
+    outputs:
+      - name: sample_size
+        required: true
+
+  - id: cohort
+    type: agent
+    skill: pyhealth
+    task: |
+      Build the analysis cohort per the protocol: define the index date, apply
+      eligibility filters in order with counts at each step, derive exposures,
+      outcomes and covariates from the described data source, and document
+      every coding choice (ICD/ATC/LOINC codes). Emit `cohort_dataset.md` with
+      the flow diagram table plus `cohort_definition.py`.
+    inputs:
+      study_protocol: "{{artifact:design:study_protocol}}"
+      sample_size: "{{artifact:power:sample_size}}"
+    outputs:
+      - name: cohort_dataset
+        required: true
+      - name: cohort_definition.py
+        required: true
+
+  - id: stats
+    type: agent
+    skill: statsmodels
+    task: |
+      Fit the pre-specified models: descriptive table (Table 1), primary
+      effect estimate with CI, confounder adjustment, interaction and subgroup
+      analyses, and diagnostics (overdispersion, proportional hazards,
+      collinearity). Report absolute risks, not only odds ratios. Emit
+      `statistical_model.md` and `statistical_model.json`.
+    inputs:
+      cohort_dataset: "{{artifact:cohort:cohort_dataset}}"
+      study_protocol: "{{artifact:design:study_protocol}}"
+    outputs:
+      - name: statistical_model
+        required: true
+      - name: statistical_model.json
+        required: true
+
+  - id: survival
+    type: agent
+    skill: scikit-survival
+    task: |
+      Time-to-event analysis: Kaplan-Meier curves with numbers at risk, median
+      survival, log-rank / weighted tests, and a Cox model with the
+      proportional-hazards check. If the outcome is not a time-to-event
+      outcome, say so explicitly and emit the corresponding analysis instead.
+      Emit `survival_analysis.md`.
+    inputs:
+      cohort_dataset: "{{artifact:cohort:cohort_dataset}}"
+      statistical_model: "{{artifact:stats:statistical_model}}"
+    outputs:
+      - name: survival_analysis
+        required: true
+
+  - id: figures
+    type: agent
+    skill: scientific-visualization
+    task: |
+      Produce journal-quality clinical figures: cohort flow diagram, forest or
+      Kaplan-Meier plot with CI bands, Table 1 / effect-size panels, and a
+      figure per subgroup analysis. Emit `figures.md` with caption, source data
+      and regeneration script for each.
+    inputs:
+      statistical_model: "{{artifact:stats:statistical_model}}"
+      survival_analysis: "{{artifact:survival:survival_analysis}}"
+    outputs:
+      - name: figures
+        required: true
+
+  # ── 证据综合路径 ────────────────────────────────────────────────────────
+  - id: meta_evidence
+    type: agent
+    skill: paper-lookup
+    task: |
+      Execute the search strategy across the relevant sources (PubMed,
+      Europe PMC, medRxiv/bioRxiv, Cochrane where applicable): record the exact
+      query, date, filters and hit counts, then screen at title/abstract and
+      full-text level with reasons for exclusion. Emit `evidence_table.md`
+      (study, design, N, population, exposure, outcome, effect, CI, risk of
+      bias) and `search_log.json`.
+    inputs:
+      clinical_question: "{{artifact:question:clinical_question}}"
+      study_protocol: "{{artifact:design:study_protocol}}"
+    outputs:
+      - name: evidence_table
+        required: true
+      - name: search_log.json
+        required: true
+
+  - id: meta_synthesis
+    type: agent
+    skill: statistical-analysis
+    task: |
+      Synthesize the evidence: choose fixed- vs random-effects with
+      justification, pool the effect measure, compute heterogeneity (I², tau²,
+      Q), run the pre-specified subgroup and sensitivity analyses, assess
+      publication bias (funnel plot, Egger), and grade certainty (GRADE).
+      Emit `pooled_effect.md` and `pooled_effect.json`.
+    inputs:
+      evidence_table: "{{artifact:meta_evidence:evidence_table}}"
+      study_protocol: "{{artifact:design:study_protocol}}"
+    outputs:
+      - name: pooled_effect
+        required: true
+      - name: pooled_effect.json
+        required: true
+
+  # ── 汇入写作 ────────────────────────────────────────────────────────────
+  - id: draft
+    type: agent
+    skill: scientific-writing
+    task: |
+      Write the manuscript following the reporting guideline named in the
+      protocol, in IMRaD structure with the required checklist items present:
+      abstract with structured headings, methods reproducible from the text,
+      results with absolute effect sizes and CIs, discussion that separates
+      statistical from clinical significance, limitations, ethics statement,
+      and data-availability statement. Emit `manuscript.md`.
+    inputs:
+      clinical_question: "{{artifact:question:clinical_question}}"
+      literature_review: "{{artifact:literature:literature_review}}"
+      study_protocol: "{{artifact:design:study_protocol}}"
+      sample_size:
+        value: "{{artifact:power:sample_size}}"
+        required: false
+      statistical_model:
+        value: "{{artifact:stats:statistical_model}}"
+        required: false
+      survival_analysis:
+        value: "{{artifact:survival:survival_analysis}}"
+        required: false
+      pooled_effect:
+        value: "{{artifact:meta_synthesis:pooled_effect}}"
+        required: false
+      evidence_table:
+        value: "{{artifact:meta_evidence:evidence_table}}"
+        required: false
+      figures:
+        value: "{{artifact:figures:figures}}"
+        required: false
+    outputs:
+      - name: manuscript
+        required: true
+
+  - id: review
+    type: agent
+    skill: peer-review
+    task: |
+      Review as a clinical-journal methodologist and a clinician would: bias
+      risk, confounding control, outcome definitions, generalisability,
+      overclaiming, and reporting-guideline compliance. Emit `review_report.md`
+      with severity-tagged items and `manuscript_under_review.md`. In
+      `node_result.json` set `decision` to "accept" or "revise".
+    inputs:
+      manuscript: "{{artifact:draft:manuscript}}"
+    outputs:
+      - name: review_report
+        required: true
+      - name: manuscript_under_review
+        required: true
+
+  - id: revise
+    type: agent
+    skill: scientific-writing
+    task: |
+      Revise to resolve every review item, re-running analyses where the
+      reviewer challenges a methodological choice rather than only softening
+      the claim. Emit `revised_manuscript.md` and `revision_notes.md` mapping
+      each item to the change.
+    inputs:
+      prompt: "{{input:prompt}}"
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      review_report: "{{artifact:review:review_report}}"
+      figures:
+        value: "{{artifact:figures:figures}}"
+        required: false
+    outputs:
+      - name: revised_manuscript
+        required: true
+      - name: revision_notes
+        required: true
+
+  - id: citations
+    type: agent
+    skill: citation-management
+    task: |
+      Verify the bibliography: resolve every citation to a DOI/PMID, emit
+      `references.bib` in the journal's style after Vancouver/AMA conversion,
+      and write `citation_audit.md` flagging retracted articles, duplicates,
+      and unverifiable references.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+    outputs:
+      - name: bibliography
+        required: true
+      - name: citation_audit
+        required: true
+
+  - id: format
+    type: agent
+    skill: venue-templates
+    task: |
+      Assemble the submission package for a clinical journal: title page,
+      blinded manuscript, tables and figures in the journal's required
+      position, supplementary material, and a completed reporting checklist
+      (STROBE / CONSORT / PRISMA) with item-to-page mapping. Emit
+      `final_paper.docx`/`final_paper.tex` and `reporting_checklist.md`.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      bibliography: "{{artifact:citations:bibliography}}"
+      citation_audit: "{{artifact:citations:citation_audit}}"
+      figures:
+        value: "{{artifact:figures:figures}}"
+        required: false
+      revision_notes:
+        value: "{{artifact:revise:revision_notes}}"
+        required: false
+    outputs:
+      - name: final_paper.tex
+        required: true
+      - name: final_paper.pdf
+        required: true
+      - name: paper_page_count.json
+        required: true
+      - name: reporting_checklist
+        required: true
+
+
+
+  - id: release_gate
+    type: agent
+    skill: scientific-critical-thinking
+    task: |
+      Inspect the actual final_paper.pdf, final_paper.tex, page-count JSON,
+      figures, bibliography and manuscript. Run pdfinfo and pdftotext. Verify
+      native compilation, 15-25 pages without duplicated filler, at least 8,000
+      main-text words, at least three distinct scientific figures or tables,
+      five verified references, and Methods/Results/Limitations/Reproducibility
+      sections. Write release_gate_report.md with measured counts and exact
+      remediation. Set decision to pass only when every hard check passes;
+      otherwise set decision to revise.
+    inputs:
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+      manuscript:
+        value: "{{artifact:review:manuscript_under_review}}"
+        required: false
+    outputs:
+      - name: release_gate_report
+        required: true
+
+  - id: release_pass
+    type: agent
+    skill: scientific-writing
+    task: |
+      Confirm the release gate passed. Write release_manifest.md with the
+      final PDF, LaTeX source, page count, figures and gate report paths.
+    inputs:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+    outputs:
+      - name: release_manifest
+        required: true
+    terminal: true
+
+edges:
+  - from: question
+    to: literature
+    priority: 10
+  - from: literature
+    to: design
+    priority: 10
+
+  # 临床研究路径（默认）
+  - from: design
+    to: power
+    when: 'result.decision != "meta"'
+    priority: 10
+  # 证据综合路径
+  - from: design
+    to: meta_evidence
+    when: 'result.decision == "meta"'
+    priority: 20
+
+  - from: power
+    to: cohort
+    priority: 10
+  - from: cohort
+    to: stats
+    priority: 10
+  - from: stats
+    to: survival
+    priority: 10
+  - from: survival
+    to: figures
+    priority: 10
+  - from: figures
+    to: draft
+    priority: 10
+
+  - from: meta_evidence
+    to: meta_synthesis
+    priority: 10
+  - from: meta_synthesis
+    to: draft
+    priority: 10
+
+  - from: draft
+    to: review
+    priority: 10
+  - from: review
+    to: citations
+    when: 'result.decision == "accept"'
+    priority: 30
+  - from: review
+    to: revise
+    when: 'result.decision == "revise"'
+    priority: 20
+  - from: revise
+    to: review
+    priority: 10
+    bind:
+      manuscript: "{{artifact:revise:revised_manuscript}}"
+    loop:
+      id: revision-cycle
+      max_iterations: 3
+  - from: citations
+    to: format
+    priority: 10
+  - from: format
+    to: release_gate
+    priority: 10
+  - from: release_gate
+    to: release_pass
+    when: 'result.decision == "pass"'
+    priority: 30
+  - from: release_gate
+    to: draft
+    when: 'result.decision == "revise"'
+    priority: 20
+    bind:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-cycle
+      max_iterations: 2
+
+budgets:
+  max_visits: 50
+  max_agent_turns: 50
+  max_duration_ms: 43200000

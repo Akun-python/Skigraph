@@ -1,0 +1,443 @@
+schema_version: 1
+id: paper-bioinfo
+version: 1
+mode: agent
+
+# 生物信息学分析流水线
+# 按测序类型分支: bulk RNA-seq / 单细胞 / 微生物组
+# 分支后统一收敛到通路富集 -> 图 -> 论文 -> 评审循环 -> 引用 -> 排版
+required_inputs: [prompt]
+entry: design
+
+nodes:
+  - id: design
+    type: agent
+    skill: experimental-design
+    task: |
+      Turn the prompt into an analysis plan: the biological question, sample
+      groups and contrasts, sequencing assay, expected effect size, batch and
+      covariate structure, multiple-testing policy (FDR), and the figures the
+      paper will need. State which assays are in scope. Emit
+      `analysis_plan.md` and `analysis_plan.json`. In `node_result.json` set
+      `decision` to "bulk", "single-cell" or "microbiome" for the primary assay
+      the analysis will follow.
+    inputs:
+      prompt: "{{input:prompt}}"
+    outputs:
+      - name: analysis_plan
+        required: true
+      - name: analysis_plan.json
+        required: true
+
+  # ── bulk RNA-seq 分支 ───────────────────────────────────────────────────
+  - id: bulk
+    type: agent
+    skill: bulk-rnaseq
+    task: |
+      Run the bulk RNA-seq quantification pipeline: reference/annotation
+      version, alignment or pseudo-alignment choice, QC (FastQC/multiqc-style
+      metrics, mapping rate, duplication, rRNA contamination), filtering
+      thresholds, and normalisation. Exclude failing samples with documented
+      reasons. Emit `quantification.md` and `sample_qc.json`.
+    inputs:
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+    outputs:
+      - name: quantification
+        required: true
+      - name: sample_qc.json
+        required: true
+
+  - id: bulk_de
+    type: agent
+    skill: pydeseq2
+    task: |
+      Differential expression with a count model appropriate to the design:
+      specified design formula with covariates, shrinkage of dispersion and LFC,
+      independent filtering, FDR control, and an explicit statement of the
+      tested contrasts. Emit `de_results.md` + `de_results.csv` (gene, log2FC,
+      SE, p, padj) and a short list of the top regulated genes with the
+      statistics that qualify them.
+    inputs:
+      quantification: "{{artifact:bulk:quantification}}"
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+    outputs:
+      - name: de_results
+        required: true
+      - name: de_results.csv
+        required: true
+
+  # ── 单细胞分支 ──────────────────────────────────────────────────────────
+  - id: sc
+    type: agent
+    skill: scanpy
+    task: |
+      Single-cell processing: ambient RNA and doublet handling, per-cell QC
+      thresholds with justification, normalisation, HVG selection, PCA,
+      neighbourhood graph, clustering at several resolutions, and marker-based
+      annotation with the marker sets used. Emit `cell_annotation.md` and
+      `cluster_markers.csv`.
+    inputs:
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+    outputs:
+      - name: cell_annotation
+        required: true
+      - name: cluster_markers.csv
+        required: true
+
+  - id: sc_integrate
+    type: agent
+    skill: scvi-tools
+    task: |
+      Build a probabilistic representation for integration and differential
+      abundance/expression across conditions and batches: model choice,
+      covariates, training diagnostics (ELBO, batch mixing metrics), and
+      downstream tests. Report how the result changes with and without batch
+      correction. Emit `integrated_adata.md` and `integration_metrics.json`.
+    inputs:
+      cell_annotation: "{{artifact:sc:cell_annotation}}"
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+    outputs:
+      - name: integrated_adata
+        required: true
+      - name: integration_metrics.json
+        required: true
+
+  # ── 微生物组分支 ────────────────────────────────────────────────────────
+  - id: mb
+    type: agent
+    skill: qiime2-amplicon
+    task: |
+      Amplicon processing: primer/region, denoising parameters, chimera
+      removal, rarefaction vs. compositionally-aware normalisation (state the
+      choice and its consequence), and taxonomy assignment with reference
+      database version. Emit `asv_table.md` and `asv_table.json`.
+    inputs:
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+    outputs:
+      - name: asv_table
+        required: true
+      - name: asv_table.json
+        required: true
+
+  - id: mb_stats
+    type: agent
+    skill: scikit-bio
+    task: |
+      Community analysis: alpha diversity (metrics + group tests), beta
+      diversity (distance metric, PERMANOVA with R² and permutations),
+      differential abundance with a method robust to compositionality, and
+      ordination coordinates for plotting. Emit `diversity_stats.md` and
+      `diversity_stats.json`.
+    inputs:
+      asv_table: "{{artifact:mb:asv_table}}"
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+    outputs:
+      - name: diversity_stats
+        required: true
+      - name: diversity_stats.json
+        required: true
+
+  # ── 收敛: 富集 -> 图 -> 写作 ────────────────────────────────────────────
+  - id: enrichment
+    type: agent
+    skill: pathway-enrichment
+    task: |
+      Functional interpretation of whatever results the assay branch produced
+      (DE genes, marker genes, or differentially abundant taxa): over-
+      representation and rank-based enrichment against the appropriate
+      ontology (GO/KEGG/Reactome/MetaCyc), background gene set stated
+      explicitly, redundancy reduction, and FDR control. Emit
+      `enrichment_results.md` and `enrichment_results.csv`.
+    inputs:
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+    outputs:
+      - name: enrichment_results
+        required: true
+      - name: enrichment_results.csv
+        required: true
+
+  - id: figures
+    type: agent
+    skill: scientific-visualization
+    task: |
+      Produce publication-quality figures: QC summary, PCA/UMAP/ordination,
+      volcano or effect-size plot, heatmap of top features, enrichment dot
+      plot, and per-group summary with uncertainty. Declare the normalisation
+      behind every axis. Emit `figures.md` with caption, source data and
+      regeneration script per figure.
+    inputs:
+      enrichment_results: "{{artifact:enrichment:enrichment_results}}"
+      de_results:
+        value: "{{artifact:bulk_de:de_results}}"
+        required: false
+      cluster_markers:
+        value: "{{artifact:sc:cluster_markers.csv}}"
+        required: false
+      diversity_stats:
+        value: "{{artifact:mb_stats:diversity_stats}}"
+        required: false
+      integrated_adata:
+        value: "{{artifact:sc_integrate:integrated_adata}}"
+        required: false
+    outputs:
+      - name: figures
+        required: true
+
+  - id: draft
+    type: agent
+    skill: scientific-writing
+    task: |
+      Write the bioinformatics paper: abstract, introduction with the biological
+      question, methods detailed enough to re-run (versions, parameters,
+      thresholds), results ordered by the analysis chain, biological
+      interpretation that stays inside what the statistics support, limitations
+      (batch, compositionality, annotation dependence), and data/code
+      availability. Emit `manuscript.md`.
+    inputs:
+      analysis_plan: "{{artifact:design:analysis_plan}}"
+      enrichment_results: "{{artifact:enrichment:enrichment_results}}"
+      de_results:
+        value: "{{artifact:bulk_de:de_results}}"
+        required: false
+      cluster_markers:
+        value: "{{artifact:sc:cluster_markers.csv}}"
+        required: false
+      integrated_adata:
+        value: "{{artifact:sc_integrate:integrated_adata}}"
+        required: false
+      diversity_stats:
+        value: "{{artifact:mb_stats:diversity_stats}}"
+        required: false
+    outputs:
+      - name: manuscript
+        required: true
+
+  - id: review
+    type: agent
+    skill: peer-review
+    task: |
+      Review as a computational-biology reviewer: appropriateness of the
+      normalisation and testing model, confounding and batch handling,
+      reproducibility of the pipeline, strength of the biological claim vs the
+      evidence, and figure integrity. Emit `review_report.md` and
+      `manuscript_under_review.md`. Set `decision` to "accept" or "revise".
+    inputs:
+      manuscript: "{{artifact:draft:manuscript}}"
+    outputs:
+      - name: review_report
+        required: true
+      - name: manuscript_under_review
+        required: true
+
+  - id: revise
+    type: agent
+    skill: scientific-writing
+    task: |
+      Revise to resolve every review item, re-running the affected analysis when
+      the objection is methodological. Emit `revised_manuscript.md` and
+      `revision_notes.md` mapping each item to the change.
+    inputs:
+      prompt: "{{input:prompt}}"
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      review_report: "{{artifact:review:review_report}}"
+      figures:
+        value: "{{artifact:figures:figures}}"
+        required: false
+    outputs:
+      - name: revised_manuscript
+        required: true
+      - name: revision_notes
+        required: true
+
+  - id: citations
+    type: agent
+    skill: citation-management
+    task: |
+      Verify the bibliography: resolve citations to DOI/PMID, emit
+      `references.bib`, and write `citation_audit.md`. Cite every reference
+      database, tool and annotation release at the exact version used.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+    outputs:
+      - name: bibliography
+        required: true
+      - name: citation_audit
+        required: true
+
+  - id: format
+    type: agent
+    skill: venue-templates
+    task: |
+      Assemble the submission package for a genomics/bioinformatics journal:
+      structured abstract, main figures, supplementary methods with full
+      parameter tables, data and code availability statements, and a
+      reproducibility checklist. Emit `final_paper.tex` and
+      `submission_checklist.md`.
+    inputs:
+      manuscript: "{{artifact:review:manuscript_under_review}}"
+      bibliography: "{{artifact:citations:bibliography}}"
+      citation_audit: "{{artifact:citations:citation_audit}}"
+      figures: "{{artifact:figures:figures}}"
+      revision_notes:
+        value: "{{artifact:revise:revision_notes}}"
+        required: false
+    outputs:
+      - name: final_paper.tex
+        required: true
+      - name: final_paper.pdf
+        required: true
+      - name: paper_page_count.json
+        required: true
+      - name: submission_checklist
+        required: true
+
+
+
+  - id: release_gate
+    type: agent
+    skill: scientific-critical-thinking
+    task: |
+      Inspect the actual final_paper.pdf, final_paper.tex, page-count JSON,
+      figures, bibliography and manuscript. Run pdfinfo and pdftotext. Verify
+      native compilation, 15-25 pages without duplicated filler, at least 8,000
+      main-text words, at least three distinct scientific figures or tables,
+      five verified references, and Methods/Results/Limitations/Reproducibility
+      sections. Write release_gate_report.md with measured counts and exact
+      remediation. Set decision to pass only when every hard check passes;
+      otherwise set decision to revise.
+    inputs:
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+      manuscript:
+        value: "{{artifact:review:manuscript_under_review}}"
+        required: false
+    outputs:
+      - name: release_gate_report
+        required: true
+
+  - id: release_pass
+    type: agent
+    skill: scientific-writing
+    task: |
+      Confirm the release gate passed. Write release_manifest.md with the
+      final PDF, LaTeX source, page count, figures and gate report paths.
+    inputs:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+      final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
+      final_paper_tex: "{{artifact:format:final_paper.tex}}"
+      page_count: "{{artifact:format:paper_page_count.json}}"
+      submission_checklist:
+        value: "{{artifact:format:submission_checklist}}"
+        required: false
+      reporting_checklist:
+        value: "{{artifact:format:reporting_checklist}}"
+        required: false
+      coverage_appendix:
+        value: "{{artifact:format:coverage_appendix}}"
+        required: false
+    outputs:
+      - name: release_manifest
+        required: true
+    terminal: true
+
+edges:
+  # 三条 assay 分支（默认 bulk 兜底，条件边优先级更高）
+  - from: design
+    to: bulk
+    when: 'result.decision != "single-cell" && result.decision != "microbiome"'
+    priority: 10
+  - from: design
+    to: sc
+    when: 'result.decision == "single-cell"'
+    priority: 20
+  - from: design
+    to: mb
+    when: 'result.decision == "microbiome"'
+    priority: 20
+
+  - from: bulk
+    to: bulk_de
+    priority: 10
+  - from: sc
+    to: sc_integrate
+    priority: 10
+  - from: mb
+    to: mb_stats
+    priority: 10
+
+  # 三条分支收敛到富集
+  - from: bulk_de
+    to: enrichment
+    priority: 10
+    bind:
+      results: "{{artifact:bulk_de:de_results}}"
+  - from: sc_integrate
+    to: enrichment
+    priority: 10
+    bind:
+      results: "{{artifact:sc_integrate:integrated_adata}}"
+  - from: mb_stats
+    to: enrichment
+    priority: 10
+    bind:
+      results: "{{artifact:mb_stats:diversity_stats}}"
+
+  - from: enrichment
+    to: figures
+    priority: 10
+  - from: figures
+    to: draft
+    priority: 10
+  - from: draft
+    to: review
+    priority: 10
+  - from: review
+    to: citations
+    when: 'result.decision == "accept"'
+    priority: 30
+  - from: review
+    to: revise
+    when: 'result.decision == "revise"'
+    priority: 20
+  - from: revise
+    to: review
+    priority: 10
+    bind:
+      manuscript: "{{artifact:revise:revised_manuscript}}"
+    loop:
+      id: revision-cycle
+      max_iterations: 3
+  - from: citations
+    to: format
+    priority: 10
+  - from: format
+    to: release_gate
+    priority: 10
+  - from: release_gate
+    to: release_pass
+    when: 'result.decision == "pass"'
+    priority: 30
+  - from: release_gate
+    to: draft
+    when: 'result.decision == "revise"'
+    priority: 20
+    bind:
+      gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-cycle
+      max_iterations: 2
+
+budgets:
+  max_visits: 50
+  max_agent_turns: 50
+  max_duration_ms: 43200000

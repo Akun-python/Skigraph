@@ -1,0 +1,171 @@
+schema_version: 1
+
+# K-Dense scientific-agent-skills, vendored at .vendor/scientific-agent-skills/skills/<id>/SKILL.md
+# Paths are project-relative; the loader appends /SKILL.md automatically.
+skills:
+  # ---------- shared research core ----------
+  - id: hypothesis-generation
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/hypothesis-generation
+    produces: [research-plan]
+
+  - id: scientific-brainstorming
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scientific-brainstorming
+    produces: [problem-statement]
+
+  - id: scientific-critical-thinking
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scientific-critical-thinking
+    consumes: [evidence, results]
+    produces: [critical-appraisal]
+
+  - id: literature-review
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/literature-review
+    consumes: [research-plan]
+    produces: [literature-review]
+
+  - id: paper-lookup
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/paper-lookup
+    produces: [evidence-table]
+
+  - id: experimental-design
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/experimental-design
+    consumes: [research-plan, literature-review]
+    produces: [methods]
+
+  - id: statistical-power
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/statistical-power
+    consumes: [methods]
+    produces: [power-analysis]
+
+  - id: exploratory-data-analysis
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/exploratory-data-analysis
+    consumes: [methods]
+    produces: [data-profile]
+
+  - id: statistical-analysis
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/statistical-analysis
+    consumes: [methods, data-profile]
+    produces: [analysis-report]
+
+  - id: statsmodels
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/statsmodels
+    consumes: [data]
+    produces: [statistical-model]
+
+  - id: scientific-visualization
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scientific-visualization
+    consumes: [analysis-report]
+    produces: [figures]
+
+  - id: markdown-mermaid-writing
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/markdown-mermaid-writing
+    produces: [method-description]
+
+  - id: scientific-writing
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scientific-writing
+    consumes: [literature-review, methods]
+    produces: [manuscript]
+
+  - id: peer-review
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/peer-review
+    consumes: [manuscript]
+    produces: [review-report, manuscript-snapshot]
+
+  - id: citation-management
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/citation-management
+    consumes: [manuscript]
+    produces: [bibliography]
+
+  - id: venue-templates
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/venue-templates
+    consumes: [manuscript, bibliography]
+    produces: [final-paper]
+
+  # ---------- computer-science / algorithm papers ----------
+  - id: scikit-learn
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scikit-learn
+    consumes: [methods]
+    produces: [experiment-code, benchmark-results]
+
+  # ---------- clinical / medical papers ----------
+  - id: clinical-reports
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/clinical-reports
+    consumes: [study-protocol]
+    produces: [clinical-report]
+
+  - id: clinical-decision-support
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/clinical-decision-support
+    produces: [clinical-question]
+
+  - id: pyhealth
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/pyhealth
+    consumes: [study-protocol]
+    produces: [cohort-dataset]
+
+  - id: scikit-survival
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scikit-survival
+    consumes: [cohort-dataset]
+    produces: [survival-analysis]
+
+  # ---------- bioinformatics / omics papers ----------
+  - id: bulk-rnaseq
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/bulk-rnaseq
+    consumes: [analysis-plan]
+    produces: [quantification]
+
+  - id: pydeseq2
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/pydeseq2
+    consumes: [quantification]
+    produces: [differential-expression]
+
+  - id: scanpy
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scanpy
+    consumes: [analysis-plan]
+    produces: [cell-annotation]
+
+  - id: scvi-tools
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scvi-tools
+    consumes: [cell-annotation]
+    produces: [integrated-dataset]
+
+  - id: qiime2-amplicon
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/qiime2-amplicon
+    consumes: [analysis-plan]
+    produces: [asv-table]
+
+  - id: scikit-bio
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/scikit-bio
+    consumes: [asv-table]
+    produces: [diversity-stats]
+
+  - id: pathway-enrichment
+    version: 1
+    path: .vendor/scientific-agent-skills/skills/pathway-enrichment
+    consumes: [differential-expression, cell-annotation, diversity-stats]
+    produces: [enrichment-results]

@@ -1,0 +1,281 @@
+{
+  "plans": [
+    {
+      "plan": "paper",
+      "workflow": "paper",
+      "prompt": "Does retrieval augmentation reduce hallucination in small LMs?",
+      "decisions": {
+        "scope": [
+          "quantitative"
+        ],
+        "methods": [
+          "quantitative"
+        ],
+        "review": [
+          "revise",
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "scope",
+        "literature",
+        "methods",
+        "eda",
+        "stats",
+        "figures",
+        "draft",
+        "review",
+        "revise",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-qualitative",
+      "workflow": "paper",
+      "prompt": "What conceptual gaps exist in agentic memory architectures?",
+      "decisions": {
+        "scope": [
+          "qualitative"
+        ],
+        "methods": [
+          "qualitative"
+        ],
+        "review": [
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "scope",
+        "literature",
+        "methods",
+        "draft",
+        "review",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-algo",
+      "workflow": "paper-algo",
+      "prompt": "A linear-time streaming algorithm for approximate heavy hitters under deletions",
+      "decisions": {
+        "review": [
+          "revise",
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "idea",
+        "related",
+        "approach",
+        "protocol",
+        "implement",
+        "eda",
+        "ablation",
+        "stats",
+        "figures",
+        "draft",
+        "review",
+        "revise",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-medical-clinical",
+      "workflow": "paper-medical",
+      "prompt": "Does SGLT2 inhibitor use reduce heart-failure hospitalisation in type 2 diabetes?",
+      "decisions": {
+        "design": [
+          "clinical"
+        ],
+        "review": [
+          "revise",
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "question",
+        "literature",
+        "design",
+        "power",
+        "cohort",
+        "stats",
+        "survival",
+        "figures",
+        "draft",
+        "review",
+        "revise",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-medical-meta",
+      "workflow": "paper-medical",
+      "prompt": "Is vitamin D supplementation associated with reduced respiratory infection?",
+      "decisions": {
+        "design": [
+          "meta"
+        ],
+        "review": [
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "question",
+        "literature",
+        "design",
+        "meta_evidence",
+        "meta_synthesis",
+        "draft",
+        "review",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-bioinfo-bulk",
+      "workflow": "paper-bioinfo",
+      "prompt": "Transcriptomic response of macrophages to hypoxia",
+      "decisions": {
+        "design": [
+          "bulk"
+        ],
+        "review": [
+          "revise",
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "design",
+        "bulk",
+        "bulk_de",
+        "enrichment",
+        "figures",
+        "draft",
+        "review",
+        "revise",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-bioinfo-single-cell",
+      "workflow": "paper-bioinfo",
+      "prompt": "Cell-type specific responses in tumour microenvironment scRNA-seq",
+      "decisions": {
+        "design": [
+          "single-cell"
+        ],
+        "review": [
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "design",
+        "sc",
+        "sc_integrate",
+        "enrichment",
+        "figures",
+        "draft",
+        "review",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-bioinfo-microbiome",
+      "workflow": "paper-bioinfo",
+      "prompt": "Gut microbiome composition in inflammatory bowel disease",
+      "decisions": {
+        "design": [
+          "microbiome"
+        ],
+        "review": [
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "design",
+        "mb",
+        "mb_stats",
+        "enrichment",
+        "figures",
+        "draft",
+        "review",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    },
+    {
+      "plan": "paper-survey",
+      "workflow": "paper-survey",
+      "prompt": "Survey of efficient attention mechanisms for long-context LLMs",
+      "decisions": {
+        "review": [
+          "revise",
+          "accept"
+        ],
+        "release_gate": [
+          "pass"
+        ]
+      },
+      "expect": [
+        "scope",
+        "literature",
+        "evidence",
+        "taxonomy",
+        "outline",
+        "draft",
+        "review",
+        "revise",
+        "citations",
+        "format",
+        "release_gate",
+        "release_pass"
+      ]
+    }
+  ]
+}
