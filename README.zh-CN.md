@@ -18,15 +18,54 @@ Agent 负责推理、调用工具和完成实际科研工作；SkillGraph 负责
 用户提示词 → Agent 阶段 → SKILL.md → 交付物契约 → 下一阶段 / 质量循环
 ```
 
-## Logo 含义
+## SkillGraph 的运行机制
 
-- **Agent**：执行推理、工具调用、代码运行与阶段任务。
-- **DAG Orchestration**：通过 YAML 节点和边编排阶段、依赖和条件分支。
-- **Checkpoint & Resume**：保存 run 状态、visit、事件和 artifact，支持暂停与恢复。
-- **Multi-Skill Support**：一个阶段可以同时加载多个互补的 `SKILL.md`。
-- **Observability**：记录 graph hash、skill hash、artifact checksum 和事件日志。
-- **Unified Output Format**：所有阶段使用统一的 `node_result.json` 契约。
-- **中心勾选**：只有必需交付物通过校验，工作流才会推进。
+SkillGraph 不会把复杂任务塞进一次非结构化对话，而是把任务转换成一系列显式状态转移。每个状态转移包含四步：
+
+1. **阶段定义**：YAML 节点声明 task、active skill bundle、inputs、required outputs、访问上限和 decision。
+2. **上下文解析**：引擎把输入和 artifact 引用解析到前序阶段产生的具体文件；缺少必需输入会停止运行，分支输入可以标记为 optional。
+3. **Agent 执行**：宿主 Agent 加载当前阶段的一个或多个 `SKILL.md`，调用工具完成工作，并在 output directory 写入文件。
+4. **契约提交**：Agent 提交 `node_result.json`；引擎验证文件、计算 hash、记录状态、选择下一条边，验证通过后才激活下一阶段。
+
+```text
+YAML 节点 → 解析输入和 Skill → 加载 SKILL.md → Agent 写文件
+→ node_result.json → artifact/path/schema/hash 校验 → 下一阶段或受限循环
+```
+
+核心原则是：**Agent 负责生成内容，图负责判断内容是否合格以及下一步做什么。**
+
+### 状态与可追溯性
+
+每次运行保存 workflow version、graph hash、active skill hashes、输入、session 和时间戳。每个阶段有唯一 `visit_id`，每个 artifact 记录生产节点、visit、相对路径、大小、SHA-256 和校验时间。因此下游阶段得到的是确定文件路径，而不是模糊的“最新稿件”。
+
+### 契约而不是提示词约定
+
+- `inputs` 定义阶段允许消费的内容；
+- `outputs` 定义必须生成的文件；
+- artifact 校验路径边界、文件存在性、大小和 schema；
+- `decision` 驱动显式分支；
+- `priority` 决定竞争边；
+- loop 限制迭代次数并要求输入发生变化；
+- release gate 在完成前校验 PDF、图表、引用和可复现性。
+
+### 一个阶段加载多个 Skill
+
+```yaml
+- id: methods
+  type: agent
+  skill: experimental-design
+  skills:
+    - experimental-design
+    - statistical-power
+```
+
+runner 会把列表中的所有 `SKILL.md` 注入当前阶段，使实验设计和功效分析、科学写作和图表设计等能力能够协同工作。
+
+### 分支、循环与质量反馈
+
+医学流程可以分成临床队列分析和 meta-analysis；生信流程可以分成 bulk RNA-seq、单细胞和微生物组。各分支产生自己的 artifact，再通过显式输入或 bind 汇合。
+
+同行评审可以把修订稿送回 review；发布质量门失败时可以退回 draft。下一次 visit 会使用新 artifact 路径，不会误读旧版本。
 
 ## 核心能力
 

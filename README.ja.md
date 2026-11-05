@@ -13,15 +13,36 @@ Agent は推論、ツール呼び出し、実際の研究作業を担当しま�
 ユーザープロンプト → Agent stage → SKILL.md → 成果物契約 → 次の stage / 品質ループ
 ```
 
-## ロゴの意味
+## 仕組み
 
-- **Agent**：推論、ツール、コード、ステージ処理を実行。
-- **DAG Orchestration**：YAML のノードとエッジで依存関係・分岐を定義。
-- **Checkpoint & Resume**：run、visit、イベント、artifact を保存し再開。
-- **Multi-Skill Support**：1つのステージで複数の `SKILL.md` をロード。
-- **Observability**：graph hash、skill hash、checksum、イベントを記録。
-- **Unified Output Format**：全ステージが統一された `node_result.json` を返す。
-- **中央のチェックマーク**：必須成果物の検証後だけ次へ進む。
+SkillGraph は複雑なタスクを明示的な状態遷移に変換します。YAML ノードがステージと契約を定義し、エンジンが入力と artifact を解決し、Agent が一つ以上の `SKILL.md` をロードしてファイルを書き込みます。その後 `node_result.json` を検証し、次のエッジまたはループを選択します。
+
+```text
+YAML ノード → 入力と Skill の解決 → SKILL.md のロード → Agent が成果物を書く
+→ node_result.json → artifact/path/schema/hash 検証 → 次のステージまたはループ
+```
+
+原則は、**Agent が内容を作り、グラフが内容の受理と次の処理を決める**ことです。
+
+### 状態とトレーサビリティ
+
+各 run は workflow version、graph hash、全 skill hash、入力、session、時刻を保存します。各ステージには固有の `visit_id` があり、artifact には生成ノード、visit、パス、サイズ、SHA-256、検証時刻が記録されます。
+
+### 複数 Skill のステージ
+
+```yaml
+- id: methods
+  skill: experimental-design
+  skills:
+    - experimental-design
+    - statistical-power
+```
+
+runner はすべての `SKILL.md` をロードし、実験設計、検出力分析、科学的記述、図表設計などを協調させます。
+
+### 分岐、ループ、品質フィードバック
+
+医学ワークフローは臨床コホートと meta-analysis に分岐でき、生物情報ワークフローは bulk RNA-seq、単一細胞、マイクロバイオームに分岐できます。査読の修正版は review に戻り、リリース品質ゲートの失敗は draft に戻ります。
 
 ## 主な機能
 

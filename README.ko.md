@@ -13,15 +13,36 @@ Agent는 추론, 도구 호출, 코드 실행과 실제 연구 작업을 담당�
 사용자 프롬프트 → Agent 단계 → SKILL.md → 산출물 계약 → 다음 단계 / 품질 루프
 ```
 
-## 로고의 의미
+## 작동 원리
 
-- **Agent**: 추론, 도구, 코드 및 단계 작업을 수행합니다.
-- **DAG Orchestration**: YAML 노드와 엣지로 의존성 및 분기를 정의합니다.
-- **Checkpoint & Resume**: run, visit, 이벤트와 artifact를 저장하고 재개합니다.
-- **Multi-Skill Support**: 한 단계에서 여러 `SKILL.md`를 로드합니다.
-- **Observability**: graph hash, skill hash, checksum과 실행 이벤트를 기록합니다.
-- **Unified Output Format**: 모든 단계가 동일한 `node_result.json` 계약을 사용합니다.
-- **중앙 체크마크**: 필수 산출물이 검증된 뒤에만 다음 단계로 이동합니다.
+SkillGraph는 복잡한 작업을 명시적인 상태 전이로 변환합니다. YAML 노드가 단계와 계약을 정의하고, 엔진이 입력과 artifact를 해결하며, Agent가 하나 이상의 `SKILL.md`를 로드해 파일을 작성합니다. 이후 `node_result.json`을 검증하고 다음 엣지 또는 루프를 선택합니다.
+
+```text
+YAML 노드 → 입력 및 Skill 해석 → SKILL.md 로드 → Agent가 산출물 작성
+→ node_result.json → artifact/path/schema/hash 검증 → 다음 단계 또는 루프
+```
+
+핵심 원칙은 **Agent는 내용을 생성하고, 그래프는 그 내용의 수용 여부와 다음 작업을 결정한다**는 것입니다.
+
+### 상태와 추적성
+
+각 run은 workflow version, graph hash, 모든 skill hash, 입력, session과 시간을 저장합니다. 각 단계에는 고유한 `visit_id`가 있고, artifact에는 생성 노드, visit, 경로, 크기, SHA-256 및 검증 시간이 기록됩니다.
+
+### 여러 Skill을 사용하는 단계
+
+```yaml
+- id: methods
+  skill: experimental-design
+  skills:
+    - experimental-design
+    - statistical-power
+```
+
+runner는 나열된 모든 `SKILL.md`를 로드해 실험 설계, 검정력 분석, 과학적 글쓰기와 그림 작성을 함께 수행할 수 있습니다.
+
+### 분기, 루프와 품질 피드백
+
+의료 워크플로는 임상 코호트와 meta-analysis로 분기할 수 있고, 생정보학 워크플로는 bulk RNA-seq, 단일세포, 마이크로바이옴으로 분기할 수 있습니다. 동료 심사 수정본은 review로 돌아가며, release 품질 게이트 실패는 draft로 돌아갑니다.
 
 ## 주요 기능
 

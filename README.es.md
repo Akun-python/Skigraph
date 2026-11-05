@@ -13,15 +13,36 @@ El Agent realiza el razonamiento, las llamadas a herramientas, el código y el t
 Prompt del usuario → etapa Agent → SKILL.md → contrato de artefactos → siguiente etapa / bucle de calidad
 ```
 
-## Significado del logo
+## Cómo funciona el mecanismo
 
-- **Agent**: razonamiento, herramientas, código y tareas de cada etapa.
-- **DAG Orchestration**: nodos y aristas YAML para dependencias y ramas.
-- **Checkpoint & Resume**: estado, visitas, eventos y artefactos persistentes.
-- **Multi-Skill Support**: una etapa puede cargar varios `SKILL.md` complementarios.
-- **Observability**: graph hash, skill hash, checksums y eventos de ejecución.
-- **Unified Output Format**: todas las etapas usan `node_result.json`.
-- **Marca central**: el flujo solo avanza cuando los entregables obligatorios pasan las validaciones.
+SkillGraph convierte una tarea compleja en transiciones de estado explícitas. El nodo YAML define la etapa y sus contratos; el motor resuelve los inputs y artifacts; el Agent carga uno o varios `SKILL.md` y escribe archivos; después `node_result.json` se valida y se selecciona la siguiente arista o el siguiente bucle.
+
+```text
+Nodo YAML → resolver inputs y Skills → cargar SKILL.md → Agent escribe artefactos
+→ node_result.json → validar artifact/path/schema/hash → siguiente etapa o bucle
+```
+
+El principio central es: **el Agent genera el contenido; el grafo decide si ese contenido es admisible y qué ocurre después**.
+
+### Estado y trazabilidad
+
+Cada run guarda la versión del workflow, graph hash, todos los skill hashes, inputs, sesión y tiempos. Cada etapa tiene un `visit_id`; cada artifact registra su nodo productor, visit, ruta, tamaño, SHA-256 y momento de validación.
+
+### Etapas con varios Skills
+
+```yaml
+- id: methods
+  skill: experimental-design
+  skills:
+    - experimental-design
+    - statistical-power
+```
+
+El runner carga todos los `SKILL.md` listados para combinar diseño experimental, potencia estadística, redacción científica y visualización.
+
+### Ramas, bucles y feedback de calidad
+
+Los flujos médicos pueden dividirse en cohortes clínicas y meta-análisis; los flujos bioinformáticos pueden dividirse en bulk RNA-seq, single-cell y microbioma. Una revisión fallida devuelve el manuscrito al ciclo de revisión; un release gate fallido devuelve el trabajo al borrador.
 
 ## Funciones principales
 

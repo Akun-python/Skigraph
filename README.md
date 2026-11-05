@@ -52,30 +52,100 @@ The graph is the source of truth for **what happens next**, while the host agent
 remains responsible for the actual scientific or engineering work. This makes a
 workflow portable across Pi, an MCP client, a CLI agent, or a custom runtime.
 
-## Understanding the Logo
+## How the Mechanism Works
 
-The logo summarizes the architecture:
+SkillGraph does not ask an agent to complete a long task in one unstructured
+conversation. It turns the task into a sequence of explicit state transitions.
+Each transition has four parts:
 
-- **Agent** — the host model performs reasoning, reads context, invokes tools,
-  executes code, and makes stage decisions.
-- **DAG Orchestration** — YAML nodes and edges describe ordered stages,
-  conditional branches, dependencies, and bounded loops.
-- **Checkpoint & Resume** — every run has durable state, visit IDs, event logs,
-  file locks, and resumable stages.
-- **Multi-Skill Support** — one stage can load several complementary
-  `SKILL.md` contracts, such as experimental design + statistical power or
-  scientific writing + Mermaid diagram generation.
-- **Observability** — manifests, graph hashes, skill hashes, node results,
-  artifact checksums, and run events make the execution inspectable.
-- **Unified Output Format** — every stage returns the same
-  `node_result.json` contract and promotes declared artifacts into the graph
-  state.
-- **Center checkmark** — a stage advances only after its required outputs pass
-  validation. The graph is not satisfied by a plausible message alone.
+1. **Stage definition** — a YAML node declares the task, active skill bundle,
+   inputs, required outputs, visit limit and optional decision fields.
+2. **Context resolution** — before activation, the engine resolves input and
+   artifact references to the exact files produced by earlier visits. Missing
+   required inputs stop the run; branch-specific inputs can be marked optional.
+3. **Agent execution** — the host agent loads the active `SKILL.md` files,
+   performs the stage using its tools, and writes files into the stage output
+   directory.
+4. **Contracted commit** — the agent submits `node_result.json`; the engine
+   verifies the declared files, hashes them, records them in run state, evaluates
+   the next edge, and only then activates the next stage.
 
-The circular arrows represent the most important property of a serious agent
-workflow: **a failed review can return the work to an earlier stage, produce a
-new artifact, and re-enter the review loop without losing provenance**.
+```text
+YAML node
+  → resolve inputs and skill pins
+  → load one or more SKILL.md contracts
+  → agent writes declared files
+  → node_result.json
+  → artifact/path/schema/hash validation
+  → deterministic edge selection
+  → next node or bounded loop
+```
+
+This separation is the central design principle: **the agent produces content;
+the graph decides whether that content is admissible and what happens next**.
+
+### State, provenance, and reproducibility
+
+Every run records a manifest containing the workflow version, graph hash, active
+skill hashes, session, inputs and timestamps. Every stage receives a unique
+`visit_id`. Every accepted artifact records its producing node, visit, relative
+path, byte size, SHA-256 hash and validation time.
+
+As a result, a downstream stage does not receive an ambiguous label such as
+"the latest manuscript". It receives a concrete path such as:
+
+```text
+runs/<run>/stages/review/visits/<visit>/outputs/manuscript_under_review.md
+```
+
+A graph or skill change invalidates the corresponding run instead of silently
+mixing old and new instructions.
+
+### Contracts instead of prompt conventions
+
+A prompt can ask for a paper, but it cannot reliably prove that the paper
+contains a methods section, that a figure exists, or that a number came from an
+experiment. SkillGraph makes those expectations explicit:
+
+- `inputs` define what a stage is allowed to consume;
+- `outputs` define which files it must produce;
+- artifact validation checks path boundaries, file existence, size and schemas;
+- `decision` fields drive declared branches;
+- `priority` resolves competing edges deterministically;
+- loop edges impose iteration limits and require changing inputs;
+- terminal release gates can validate PDF pages, figures, references and
+  reproducibility before completion.
+
+### Multiple skills in one stage
+
+Some tasks need a coordinated set of methods. A node can expose a primary skill
+and additional complementary skills:
+
+```yaml
+- id: methods
+  type: agent
+  skill: experimental-design
+  skills:
+    - experimental-design
+    - statistical-power
+```
+
+The runner loads every listed `SKILL.md` into the stage context. This allows a
+single stage to combine, for example, experimental design with power analysis,
+or scientific writing with diagram construction, without merging unrelated
+instructions into one oversized skill.
+
+### Branches, loops, and quality feedback
+
+Branches represent real alternatives, not prose instructions. A medical workflow
+can select clinical-cohort analysis or meta-analysis; a bioinformatics workflow
+can select bulk RNA-seq, single-cell, or microbiome analysis. Each branch
+produces its own artifacts and converges through explicitly bound inputs.
+
+Loops create feedback with provenance. A peer review can return a revised
+manuscript to the review node, while a final release gate can return a failed
+paper to drafting. The next visit receives the new artifact path, so the graph
+never mistakes an old draft for the revision being evaluated.
 
 ## Core Concepts
 

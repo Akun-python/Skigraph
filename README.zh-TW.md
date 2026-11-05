@@ -13,15 +13,38 @@ Agent 負責推理、工具呼叫與實際科研工作；SkillGraph 負責階段
 使用者提示詞 → Agent 階段 → SKILL.md → 交付物契約 → 下一階段 / 品質循環
 ```
 
-## Logo 含義
+## SkillGraph 的運作機制
 
-- **Agent**：執行推理、工具呼叫、程式碼與階段任務。
-- **DAG Orchestration**：使用 YAML 節點與邊編排依賴、階段與條件分支。
-- **Checkpoint & Resume**：保存 run 狀態、visit、事件與 artifact，支援暫停及恢復。
-- **Multi-Skill Support**：同一階段可同時載入多個互補的 `SKILL.md`。
-- **Observability**：記錄 graph hash、skill hash、artifact checksum 與事件。
-- **Unified Output Format**：所有階段使用統一的 `node_result.json`。
-- **中心勾選**：只有必需交付物通過驗證，流程才會推進。
+SkillGraph 將複雜任務拆成明確的狀態轉移：YAML 節點定義階段與契約；引擎解析輸入和 artifact；Agent 載入一個或多個 `SKILL.md` 並寫入檔案；`node_result.json` 提交後，系統驗證檔案、hash、schema 並選擇下一條邊。
+
+```text
+YAML 節點 → 解析輸入與 Skill → 載入 SKILL.md → Agent 寫檔案
+→ node_result.json → artifact/path/schema/hash 驗證 → 下一階段或循環
+```
+
+核心原則：**Agent 產生內容，圖決定內容是否可接受以及接下來做什麼。**
+
+### 狀態與可追溯性
+
+每次 run 保存 workflow version、graph hash、所有 skill hash、輸入、session 與時間。每個階段有唯一 `visit_id`；每個 artifact 記錄產生節點、visit、相對路徑、大小、SHA-256 和驗證時間。下游收到的是確定路徑，不是模糊的「最新版本」。
+
+### 多 Skill 階段
+
+```yaml
+- id: methods
+  skill: experimental-design
+  skills:
+    - experimental-design
+    - statistical-power
+```
+
+runner 會載入所有列出的 `SKILL.md`，讓實驗設計、功效分析、科學寫作與圖表設計等能力協同工作。
+
+### 分支、循環與品質回饋
+
+醫學流程可以分成臨床隊列與 meta-analysis；生信流程可以分成 bulk RNA-seq、單細胞與微生物組。各分支產生自己的 artifact，再透過明確輸入或 bind 匯合。
+
+同行評審可以把修訂稿送回 review；發布品質門失敗時可退回 draft。下一次 visit 會使用新的 artifact 路徑，不會誤讀舊版本。
 
 ## 主要功能
 
