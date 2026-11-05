@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="SkillGraph logo" width="760">
+  <img src="logo.png" alt="SkillGraph logo" width="360">
 </p>
 
 <h1 align="center">SkillGraph</h1>
@@ -12,6 +12,16 @@
   <a href="https://github.com/Akun-python/skill-graph">GitHub</a> ·
   <a href=".skill-workflows/README.md">Scientific paper workflows</a> ·
   <a href="LICENSE">MIT License</a>
+</p>
+
+<p align="center">
+  <b>Languages:</b>
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.zh-TW.md">繁體中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.ko.md">한국어</a> ·
+  <a href="README.es.md">Español</a>
 </p>
 
 ---
