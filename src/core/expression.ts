@@ -53,13 +53,21 @@ class Parser {
 
   private parseOr(): JsonValue {
     let value = this.parseAnd();
-    while (this.take("||")) value = Boolean(value) || Boolean(this.parseAnd());
+    while (this.take("||")) {
+      // Parse the right side even when the left side already decided the result:
+      // skipping it would leave its tokens unconsumed and break `parse()`.
+      const right = this.parseAnd();
+      value = Boolean(value) || Boolean(right);
+    }
     return value;
   }
 
   private parseAnd(): JsonValue {
     let value = this.parseComparison();
-    while (this.take("&&")) value = Boolean(value) && Boolean(this.parseComparison());
+    while (this.take("&&")) {
+      const right = this.parseComparison();
+      value = Boolean(value) && Boolean(right);
+    }
     return value;
   }
 

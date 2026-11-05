@@ -212,12 +212,29 @@ function parseOutputs(value: unknown, nodeName: string): SkillGraphOutput[] {
   return outputs;
 }
 
-function parseInputs(value: unknown, nodeName: string): Record<string, string> | undefined {
+function parseInputs(value: unknown, nodeName: string): { inputs: Record<string, string>; optional: string[] } | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) throw new SkillGraphError("invalid_graph", `${nodeName}.inputs must be an object`);
-  const result: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(value)) result[assertId(key, `${nodeName}.inputs key`)] = assertString(raw, `${nodeName}.inputs.${key}`, 2048);
-  return result;
+  const inputs: Record<string, string> = {};
+  const optional: string[] = [];
+  for (const [key, raw] of Object.entries(value)) {
+    const name = assertId(key, `${nodeName}.inputs key`);
+    if (isRecord(raw)) {
+      for (const field of Object.keys(raw)) {
+        if (field !== "value" && field !== "required") throw new SkillGraphError("invalid_graph", `${nodeName}.inputs.${key} may only declare value and required`);
+      }
+      inputs[name] = assertString(raw.value, `${nodeName}.inputs.${key}.value`, 2048);
+      if (raw.required !== undefined && typeof raw.required !== "boolean") throw new SkillGraphError("invalid_graph", `${nodeName}.inputs.${key}.required must be a boolean`);
+      if (raw.required === false) optional.push(name);
+      continue;
+    }
+    inputs[name] = assertString(raw, `${nodeName}.inputs.${key}`, 2048);
+  }
+  return { inputs, optional };
+}
+
+function parseInputMap(value: unknown, nodeName: string): Record<string, string> | undefined {
+  return parseInputs(value, nodeName)?.inputs;
 }
 
 function parseRequiredInputs(value: unknown, sourcePath: string): string[] {
@@ -239,14 +256,21 @@ function parseNodes(document: RawWorkflowDocument): SkillGraphNode[] {
     const type = raw.type === undefined ? "agent" : raw.type;
     if (type !== "agent") throw new SkillGraphError("invalid_graph", `${id}.type must be agent in v1`);
     const task = assertString(raw.task, `${id}.task`);
-    const skill = assertId(typeof raw.skill === "string" ? raw.skill.split("@")[0] : raw.skill, `${id}.skill`);
+    const rawSkills = raw.skills === undefined ? undefined : raw.skills;
+    if (rawSkills !== undefined && (!Array.isArray(rawSkills) || rawSkills.length === 0)) throw new SkillGraphError("invalid_graph", `${id}.skills must be a non-empty list`);
+    const skills = rawSkills?.map((value, skillIndex) => assertId(typeof value === "string" ? value.split("@")[0] : value, `${id}.skills[${skillIndex}]`));
+    const skill = assertId(typeof raw.skill === "string" ? raw.skill.split("@")[0] : (skills?.[0] ?? raw.skill), `${id}.skill`);
+    const uniqueSkills = [...new Set([skill, ...(skills ?? [])])];
     const maxVisits = raw.max_visits ?? raw.maxVisits;
+    const inputs = parseInputs(raw.inputs, id);
     return {
       id,
       type: "agent",
       skill,
+      ...(uniqueSkills.length > 1 ? { skills: uniqueSkills } : {}),
       task,
-      ...(parseInputs(raw.inputs, id) ? { inputs: parseInputs(raw.inputs, id) } : {}),
+      ...(inputs ? { inputs: inputs.inputs } : {}),
+      ...(inputs && inputs.optional.length > 0 ? { optionalInputs: inputs.optional } : {}),
       outputs: parseOutputs(raw.outputs, id),
       ...(raw.result_schema === undefined && raw.resultSchema === undefined ? {} : { resultSchema: assertString(raw.result_schema ?? raw.resultSchema, `${id}.result_schema`, 256) }),
       ...(raw.terminal === true ? { terminal: true } : {}),
@@ -264,7 +288,7 @@ function parseEdges(value: unknown, nodes: SkillGraphNode[], isStages: boolean, 
     const id = assertId(raw.id ?? `${from}-to-${to}-${index + 1}`, `edges[${index}].id`);
     const priority = raw.priority === undefined ? 0 : raw.priority;
     if (!Number.isInteger(priority) || (priority as number) < -1_000_000 || (priority as number) > 1_000_000) throw new SkillGraphError("invalid_graph", `${id}.priority must be an integer`);
-    const edge: SkillGraphEdge = { id, from, to, priority: priority as number, ...(raw.when === undefined ? {} : { when: assertString(raw.when, `${id}.when`, 2048) }), ...(raw.bind === undefined ? {} : { bind: parseInputs(raw.bind, id) }), ...(raw.loop === undefined ? {} : { loop: parseLoop(raw.loop, id) }) };
+    const edge: SkillGraphEdge = { id, from, to, priority: priority as number, ...(raw.when === undefined ? {} : { when: assertString(raw.when, `${id}.when`, 2048) }), ...(raw.bind === undefined ? {} : { bind: parseInputMap(raw.bind, id) }), ...(raw.loop === undefined ? {} : { loop: parseLoop(raw.loop, id) }) };
     return edge;
   }) ?? [];
   if (isStages && edges.length === 0) {
@@ -414,16 +438,18 @@ function resolveSkillPins(graph: SkillGraph, cwd: string, contracts: SkillContra
   const skillRoots = graph.sourceScope === "user" ? [sourceRoot] : [sourceRoot, resolve(cwd)];
   const pins: ResolvedSkillPin[] = [];
   for (const node of graph.nodes) {
-    if (pins.some((pin) => pin.id === node.skill)) continue;
-    const contract = contracts.find((item) => item.id === node.skill);
-    if (contract?.path) {
-      const local = resolveLocalSkillPin(skillRoots, contract.path);
-      pins.push({ id: node.skill, version: contract.version, filePath: local.filePath, baseDir: local.baseDir, sha256: readSkillSha256(local.filePath) });
-      continue;
+    for (const skillId of node.skills ?? [node.skill]) {
+      if (pins.some((pin) => pin.id === skillId)) continue;
+      const contract = contracts.find((item) => item.id === skillId);
+      if (contract?.path) {
+        const local = resolveLocalSkillPin(skillRoots, contract.path);
+        pins.push({ id: skillId, version: contract.version, filePath: local.filePath, baseDir: local.baseDir, sha256: readSkillSha256(local.filePath) });
+        continue;
+      }
+      const skill = findInstalledSkill(cwd, sourceRoot, roots, skillId);
+      if (!skill) throw new SkillGraphError("missing_skill", `Skill ${skillId} is not installed or pinned`);
+      pins.push({ id: skillId, version: contract?.version ?? 1, filePath: skill.filePath, baseDir: skill.baseDir, sha256: readSkillSha256(skill.filePath) });
     }
-    const skill = findInstalledSkill(cwd, sourceRoot, roots, node.skill);
-    if (!skill) throw new SkillGraphError("missing_skill", `Skill ${node.skill} is not installed or pinned`);
-    pins.push({ id: node.skill, version: contract?.version ?? 1, filePath: skill.filePath, baseDir: skill.baseDir, sha256: readSkillSha256(skill.filePath) });
   }
   return pins;
 }
@@ -437,8 +463,10 @@ export async function loadWorkflow(options: LoadWorkflowOptions): Promise<SkillG
   const graph = parseWorkflowDocument(readYaml(source.path, MAX_WORKFLOW_BYTES), source.path, source.scope);
   const contracts = parseContracts(source);
   for (const node of graph.nodes) {
-    const contract = contracts.find((item) => item.id === node.skill);
-    if (contracts.length > 0 && !contract) throw new SkillGraphError("invalid_graph", `Skill ${node.skill} is missing from graph/skills.yaml`);
+    for (const skillId of node.skills ?? [node.skill]) {
+      const contract = contracts.find((item) => item.id === skillId);
+      if (contracts.length > 0 && !contract) throw new SkillGraphError("invalid_graph", `Skill ${skillId} is missing from graph/skills.yaml`);
+    }
   }
   graph.skillContracts = contracts;
   // Resolve now so execution refuses missing skills before creating a run.

@@ -73,7 +73,7 @@ function lookupReference(type: string, first: string, field: string | undefined,
   if (type === "artifact") {
     const artifact = state.artifacts[`${first}:${field ?? ""}`];
     if (!artifact) throw new SkillGraphError("invalid_route", `Artifact ${first}:${field ?? ""} is not available`);
-    return join(getRunPaths(state.cwd, state.runId).root, "stages", artifact.nodeId, "visits", artifact.visitId, artifact.relativePath);
+    return join(getRunPaths(state.cwd, state.runId).root, "stages", artifact.nodeId, "visits", artifact.visitId, "outputs", artifact.relativePath);
   }
   const result = state.results[first];
   if (!result) throw new SkillGraphError("invalid_route", `Result ${first} is not available`);
@@ -85,8 +85,15 @@ function lookupReference(type: string, first: string, field: string | undefined,
 
 function resolveNodeInputs(node: SkillGraphNode, state: WorkflowRunState, bindings: Record<string, JsonValueLike> = {}): JsonObject {
   const result: JsonObject = {};
+  const optional = new Set(node.optionalInputs ?? []);
   for (const [name, value] of Object.entries(node.inputs ?? {})) {
-    const resolved = templateReference(value, state, bindings);
+    let resolved: JsonValueLike;
+    try {
+      resolved = templateReference(value, state, bindings);
+    } catch (error) {
+      if (!optional.has(name) || !(error instanceof SkillGraphError)) throw error;
+      continue;
+    }
     if (!isJsonValue(resolved)) throw new SkillGraphError("invalid_route", `Input ${name} is not JSON serializable`);
     result[name] = resolved;
   }
@@ -135,10 +142,26 @@ function selectEdge(graph: SkillGraph, nodeId: string, result: NodeResult): Skil
   return matches[0];
 }
 
+function skillsForNode(manifest: WorkflowManifest, node: SkillGraphNode): ResolvedSkillPin[] {
+  const ids = node.skills ?? [node.skill];
+  const skills = ids.map((id) => manifest.skills.find((item) => item.id === id));
+  if (skills.some((skill) => !skill)) throw new SkillGraphError("missing_skill", `A skill for node ${node.id} is not pinned in the run manifest`);
+  return skills as ResolvedSkillPin[];
+}
+
 function skillForNode(manifest: WorkflowManifest, node: SkillGraphNode): ResolvedSkillPin {
-  const skill = manifest.skills.find((item) => item.id === node.skill);
-  if (!skill) throw new SkillGraphError("missing_skill", `Skill ${node.skill} is not pinned in the run manifest`);
-  return skill;
+  return skillsForNode(manifest, node)[0];
+}
+
+function stageTask(node: SkillGraphNode, skills: ResolvedSkillPin[]): string {
+  const required = node.outputs.filter((output) => output.required !== false).map((output) => output.name).join(", ") || "none";
+  const preamble = [
+    `Read all active SKILL.md files before doing this stage and follow their complementary workflows, checklists and output conventions.`,
+    `Active skills: ${skills.map((skill) => skill.filePath).join(" | ")}.`,
+    `Required deliverables: ${required}. Write each one into the visit outputDirectory and report them under artifacts in node_result.json.`,
+    "Only use inputs that are present in this stage context; never fabricate a missing upstream deliverable.",
+  ].join(" ");
+  return `${preamble}\n\n${node.task}`;
 }
 
 function makeEvent(runId: string, type: string, data?: JsonObject, current?: CurrentVisit): GraphEvent {
@@ -209,7 +232,8 @@ export class SkillGraphEngine {
     const node = graphNode(graph, state.current.nodeId);
     const paths = visitPaths(this.cwd, state.runId, node.id, state.current.visitId);
     ensureVisitDirectories(this.cwd, state.runId, node.id, state.current.visitId);
-    return { runId: state.runId, workflowId: state.workflowId, nodeId: node.id, visitId: state.current.visitId, attempt: state.current.attempt, task: node.task, skill: skillForNode(manifest, node), inputs: state.current.input, requiredOutputs: node.outputs, resultPath: paths.result, outputDirectory: paths.outputs, allowedEdges: graphEdges(graph, node.id).map((edge) => ({ id: edge.id, to: edge.to, ...(edge.when ? { when: edge.when } : {}), priority: edge.priority })) };
+    const skills = skillsForNode(manifest, node);
+    return { runId: state.runId, workflowId: state.workflowId, nodeId: node.id, visitId: state.current.visitId, attempt: state.current.attempt, task: stageTask(node, skills), skill: skills[0], ...(skills.length > 1 ? { skills } : {}), inputs: state.current.input, requiredOutputs: node.outputs, resultPath: paths.result, outputDirectory: paths.outputs, allowedEdges: graphEdges(graph, node.id).map((edge) => ({ id: edge.id, to: edge.to, ...(edge.when ? { when: edge.when } : {}), priority: edge.priority })) };
   }
 
   async submit(runId: string, nodeId: string, visitId: string, resultPath?: string): Promise<{ status: string; result?: NodeResult; next?: StageContext; error?: { code: string; message: string } }> {

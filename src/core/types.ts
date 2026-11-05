@@ -39,8 +39,10 @@ export interface SkillGraphNode {
   id: string;
   type: "agent";
   skill: string;
+  skills?: string[];
   task: string;
   inputs?: Record<string, string>;
+  optionalInputs?: string[];
   outputs: SkillGraphOutput[];
   resultSchema?: string;
   terminal?: boolean;
@@ -169,6 +171,7 @@ export interface StageContext {
   attempt: number;
   task: string;
   skill: ResolvedSkillPin;
+  skills?: ResolvedSkillPin[];
   inputs: JsonObject;
   requiredOutputs: SkillGraphOutput[];
   resultPath: string;
