@@ -90,7 +90,10 @@ nodes:
       point + how to reproduce) and `benchmark_results.json` with one record per
       (method, dataset, metric, seed) and exact scores as measured. Do not
       fabricate numbers: if a configuration could not be run, record it as
-      `not_run` with the reason.
+      `not_run` with the reason. Record the dataset's official source URL,
+      license or access terms, download date, SHA-256 checksum, target and
+      features, preprocessing, splits and seeds. Fit preprocessing only on
+      training data; retain executable code and per-fold raw results.
     inputs:
       method_description: "{{artifact:approach:method_description}}"
       experiment_protocol: "{{artifact:protocol:experiment_protocol}}"
@@ -175,7 +178,9 @@ nodes:
       experimental setup, results (only claims the statistics support), ablation
       study, limitations, threats to validity, and conclusion. Emit
       `manuscript.md` with every number traceable to `benchmark_results.json` /
-      `analysis_report.json`.
+      `analysis_report.json`. State the unit of analysis, uncertainty method,
+      data leakage checks and limitations; never treat correlated cross-validation
+      folds as independent patient observations.
     inputs:
       literature_review: "{{artifact:related:literature_review}}"
       method_description: "{{artifact:approach:method_description}}"
