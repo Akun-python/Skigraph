@@ -92,6 +92,6 @@ npm run smoke
 npm test
 ```
 
-## License
+## 라이선스
 
-MIT
+Copyright 2026 Akun-python. 이 프로젝트는 [Apache License 2.0](LICENSE)을 따릅니다. 타사 Skill과 의존성에는 각각의 라이선스가 적용됩니다.

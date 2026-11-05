@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/Akun-python/skill-graph">GitHub</a> ·
   <a href=".skill-workflows/README.md">Scientific paper workflows</a> ·
-  <a href="LICENSE">MIT License</a>
+  <a href="LICENSE">Apache License 2.0</a>
 </p>
 
 <p align="center">
@@ -544,4 +544,5 @@ compiled PDF.
 
 ## License
 
-MIT
+Copyright 2026 Akun-python. Licensed under the [Apache License, Version 2.0](LICENSE).
+Third-party skills and dependencies retain their respective licenses.

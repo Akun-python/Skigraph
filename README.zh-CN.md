@@ -170,6 +170,6 @@ src/core/
 - artifact 不能逃逸当前 run 的输出目录。
 - API key 不写入 workflow，也不提交到仓库。
 
-## License
+## 许可证
 
-MIT
+版权所有 © 2026 Akun-python。项目采用 [Apache License 2.0](LICENSE)；第三方 Skill 和依赖继续遵循各自的许可证。

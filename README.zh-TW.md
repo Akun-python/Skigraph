@@ -95,6 +95,6 @@ npm run smoke
 npm test
 ```
 
-## License
+## 授權條款
 
-MIT
+版權所有 © 2026 Akun-python。本專案採用 [Apache License 2.0](LICENSE)；第三方 Skill 與相依套件仍遵循各自的授權條款。
