@@ -27,7 +27,7 @@ const graphYaml = ".skill-workflows/graph/skills.yaml";
 const ALIASES = {
   "research-plan": ["research_plan"],
   "problem-statement": ["problem_statement", "novelty_hypotheses", "novelty_hypotheses.json", "scope", "scope.json"],
-  "critical-appraisal": ["critical_appraisal", "taxonomy", "synthesis_matrix", "ablation_report", "release_gate_report"],
+  "critical-appraisal": ["critical_appraisal", "taxonomy", "synthesis_matrix", "ablation_report", "release_gate_report", "evidence_manifest.json", "evidence_audit"],
   "literature-review": ["literature_review", "corpus.json"],
   "evidence-table": ["evidence_table", "evidence_notes", "claims_table.json", "search_log.json"],
   "methods": ["methods", "experiment_protocol", "experiment_protocol.json", "study_protocol", "study_protocol.json", "analysis_plan", "analysis_plan.json"],
@@ -35,7 +35,7 @@ const ALIASES = {
   "data-profile": ["data_profile"],
   "analysis-report": ["analysis_report", "analysis_report.json", "pooled_effect", "pooled_effect.json"],
   "statistical-model": ["statistical_model", "statistical_model.json"],
-  "figures": ["figures"],
+  "figures": ["figures", "figure_generation.py", "figure1_main.pdf", "figure2_fold_differences.pdf", "figure3_difference_ranges.pdf"],
   "method-description": ["method_description", "outline", "figures"],
   "manuscript": ["manuscript", "manuscript_draft", "revised_manuscript", "revision_notes"],
   "review-report": ["review_report"],
@@ -128,21 +128,23 @@ for (const f of readdirSync(wfDir).filter((n) => n.endsWith(".yaml")).sort()) {
   }
 
   for (const n of g.nodes) {
-    const skill = skills.get(n.skill);
-    // A1
-    if (!skill) {
+    const skillIds = n.skills?.length ? n.skills : (n.skill ? [n.skill] : []);
+    const missingSkills = skillIds.filter((id) => !skills.has(id));
+    // A1: multi-skill nodes are valid; every declared skill must be registered.
+    if (!skillIds.length || missingSkills.length) {
       issues++;
-      console.log(`✗ ${f} ${n.id}: skill "${n.skill}" 未注册`);
+      console.log(`✗ ${f} ${n.id}: 未注册 skill ${JSON.stringify(missingSkills.length ? missingSkills : skillIds)}`);
       continue;
     }
-    const produces = skill.produces || [];
-    if (verbose) console.log(`\n[${f}] ${n.id} -> ${n.skill} (${produces.join(",")})`);
+    const produces = skillIds.flatMap((id) => skills.get(id).produces || []);
+    const skillLabel = skillIds.join(",");
+    if (verbose) console.log(`\n[${f}] ${n.id} -> ${skillLabel} (${produces.join(",")})`);
     // A2
     for (const o of n.outputs || []) {
       const key = `${n.id}:${o.name}`;
       if (!terminal.has(n.id) && o.required !== false && !covers(produces, o.name)) {
         issues++;
-        console.log(`✗ ${f} ${n.id}: output "${o.name}" 不在 ${n.skill} 的 produces ${JSON.stringify(produces)} 中`);
+        console.log(`✗ ${f} ${n.id}: output "${o.name}" 不在 ${skillLabel} 的 produces ${JSON.stringify(produces)} 中`);
       }
       consumed.set(key, []);
       if (verbose) console.log(`   产出 ${o.name}${o.required === false ? "(可选)" : ""}`);

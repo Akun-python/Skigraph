@@ -19,7 +19,7 @@
     "prepublishOnly": "npm run build",
     "start": "node dist/cli.js",
     "mcp": "node dist/adapters/mcp/server.js",
-    "test": "node --test dist/tests/*.test.js",
+    "test": "node --test dist/tests/*.test.js scripts/experiment-controller.test.mjs",
     "audit": "node scripts/audit-workflows.mjs",
     "qa": "npm run check && npm test && npm run audit && node scripts/validate-workflows.cjs",
     "smoke": "node scripts/smoke-paper.mjs",

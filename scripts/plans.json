@@ -70,6 +70,7 @@
       "workflow": "paper-algo",
       "prompt": "A linear-time streaming algorithm for approximate heavy hitters under deletions",
       "decisions": {
+        "experiment_diagnosis": ["repair_method", "repair_tuning", "ready"],
         "review": [
           "revise",
           "accept"
@@ -84,9 +85,12 @@
         "approach",
         "protocol",
         "implement",
+        "evidence_audit",
         "eda",
         "ablation",
         "stats",
+        "experiment_diagnosis",
+        "method_improvement",
         "figures",
         "draft",
         "review",

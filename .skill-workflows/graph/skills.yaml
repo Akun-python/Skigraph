@@ -3,6 +3,11 @@ schema_version: 1
 # K-Dense scientific-agent-skills, vendored at .vendor/scientific-agent-skills/skills/<id>/SKILL.md
 # Paths are project-relative; the loader appends /SKILL.md automatically.
 skills:
+  - id: algorithm-research-loop
+    version: 1
+    path: .skill-workflows/skills/algorithm-research-loop
+    produces: [method-description, experiment-suite, experiment-state, experiment-decision, repair-plan, experiment-stop-report]
+
   # ---------- shared research core ----------
   - id: hypothesis-generation
     version: 1
@@ -65,7 +70,18 @@ skills:
     version: 1
     path: .vendor/scientific-agent-skills/skills/scientific-visualization
     consumes: [analysis-report]
-    produces: [figures]
+    produces: [figures, figure-inventory, figure-provenance]
+
+  - id: paper-figure-contract
+    version: 1
+    source: local
+    path: .skill-workflows/skills/paper-figure-contract
+    produces: [figure-inventory, figure-provenance, figure-audit, figure-gap-report]
+
+  - id: stage-skill-memory
+    version: 1
+    path: .skill-workflows/skills/stage-skill-memory
+    produces: [stage-skill-memory]
 
   - id: markdown-mermaid-writing
     version: 1
@@ -76,13 +92,13 @@ skills:
     version: 1
     path: .vendor/scientific-agent-skills/skills/scientific-writing
     consumes: [literature-review, methods]
-    produces: [manuscript]
+    produces: [manuscript, evidence-bound-manuscript]
 
   - id: peer-review
     version: 1
     path: .vendor/scientific-agent-skills/skills/peer-review
     consumes: [manuscript]
-    produces: [review-report, manuscript-snapshot]
+    produces: [review-report, manuscript-snapshot, review-memory]
 
   - id: citation-management
     version: 1
