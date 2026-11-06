@@ -46,7 +46,7 @@ test("nodes can expose multiple active skills while preserving the primary skill
   const draft = graph.nodes.find((node) => node.id === "draft");
   assert.deepEqual(methods?.skills, ["experimental-design", "statistical-power"]);
   assert.equal(methods?.skill, "experimental-design");
-  assert.deepEqual(draft?.skills, ["scientific-writing", "markdown-mermaid-writing"]);
+  assert.deepEqual(draft?.skills, ["scientific-writing", "markdown-mermaid-writing", "paper-figure-contract"]);
 });
 
 test("every workflow loads with optional inputs across all five pipelines", async () => {

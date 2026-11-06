@@ -133,17 +133,34 @@ nodes:
 
   - id: figures
     type: agent
-    skill: scientific-visualization
+    skills: [scientific-visualization, stage-skill-memory, paper-figure-contract]
     task: |
+      On revisit consume release_gate_report and repair its numbered failures.
+      Missing evidence requires needs_input; do not invent replacement results.
       Produce journal-quality clinical figures: cohort flow diagram, forest or
       Kaplan-Meier plot with CI bands, Table 1 / effect-size panels, and a
       figure per subgroup analysis. Emit `figures.md` with caption, source data
       and regeneration script for each.
     inputs:
-      statistical_model: "{{artifact:stats:statistical_model}}"
-      survival_analysis: "{{artifact:survival:survival_analysis}}"
+      statistical_model:
+        value: "{{artifact:stats:statistical_model}}"
+        required: false
+      survival_analysis:
+        value: "{{artifact:survival:survival_analysis}}"
+        required: false
+      meta_synthesis:
+        value: "{{artifact:meta_synthesis:pooled_effect}}"
+        required: false
     outputs:
       - name: figures
+        required: true
+      - name: figure_inventory.json
+        required: true
+      - name: figure_provenance.json
+        required: true
+      - name: figure_gap_report.md
+        required: true
+      - name: stage_skill_memory.json
         required: true
 
   # ── 证据综合路径 ────────────────────────────────────────────────────────
@@ -187,8 +204,10 @@ nodes:
   # ── 汇入写作 ────────────────────────────────────────────────────────────
   - id: draft
     type: agent
-    skill: scientific-writing
+    skills: [scientific-writing, paper-figure-contract]
     task: |
+      On revisit consume gate_report and preserve the last reviewed manuscript,
+      evidence IDs and resolved issues rather than restart without context.
       Write the manuscript following the reporting guideline named in the
       protocol, in IMRaD structure with the required checklist items present:
       abstract with structured headings, methods reproducible from the text,
@@ -223,7 +242,7 @@ nodes:
 
   - id: review
     type: agent
-    skill: peer-review
+    skills: [peer-review, paper-figure-contract]
     task: |
       Review as a clinical-journal methodologist and a clinician would: bias
       risk, confounding control, outcome definitions, generalisability,
@@ -240,7 +259,7 @@ nodes:
 
   - id: revise
     type: agent
-    skill: scientific-writing
+    skills: [scientific-writing, paper-figure-contract]
     task: |
       Revise to resolve every review item, re-running analyses where the
       reviewer challenges a methodological choice rather than only softening
@@ -263,6 +282,7 @@ nodes:
     type: agent
     skill: citation-management
     task: |
+      On revisit consume release_gate_report and reverify failed source links.
       Verify the bibliography: resolve every citation to a DOI/PMID, emit
       `references.bib` in the journal's style after Vancouver/AMA conversion,
       and write `citation_audit.md` flagging retracted articles, duplicates,
@@ -277,8 +297,10 @@ nodes:
 
   - id: format
     type: agent
-    skill: venue-templates
+    skills: [venue-templates, paper-figure-contract]
     task: |
+      On revisit consume release_gate_report and repair the exact package faults.
+      Scientific edits require renewed peer review, not silent formatting changes.
       Assemble the submission package for a clinical journal: title page,
       blinded manuscript, tables and figures in the journal's required
       position, supplementary material, and a completed reporting checklist
@@ -290,6 +312,15 @@ nodes:
       citation_audit: "{{artifact:citations:citation_audit}}"
       figures:
         value: "{{artifact:figures:figures}}"
+        required: false
+      figure_inventory:
+        value: "{{artifact:figures:figure_inventory.json}}"
+        required: false
+      figure_provenance:
+        value: "{{artifact:figures:figure_provenance.json}}"
+        required: false
+      figure_gap_report:
+        value: "{{artifact:figures:figure_gap_report.md}}"
         required: false
       revision_notes:
         value: "{{artifact:revise:revision_notes}}"
@@ -303,12 +334,14 @@ nodes:
         required: true
       - name: reporting_checklist
         required: true
+      - name: figure_audit.json
+        required: true
 
 
 
   - id: release_gate
     type: agent
-    skill: scientific-critical-thinking
+    skills: [scientific-critical-thinking, paper-figure-contract]
     task: |
       Inspect the actual final_paper.pdf, final_paper.tex, page-count JSON,
       figures, bibliography and manuscript. Run pdfinfo and pdftotext. Verify
@@ -317,8 +350,16 @@ nodes:
       five verified references, and Methods/Results/Limitations/Reproducibility
       sections. Write release_gate_report.md with measured counts and exact
       remediation. Set decision to pass only when every hard check passes;
-      otherwise set decision to revise.
+      Otherwise set revise_figures for figure evidence/provenance repair,
+      revise_citations for bibliography/attribution repair, revise_format for
+      native compilation/layout/venue-package repair, or revise for substantive
+      manuscript repair. Missing evidence or human approval requires needs_input,
+      not fabricated completion. On repair visits consume release_gate_report.
     inputs:
+      figure_gap_report:
+        value: "{{artifact:figures:figure_gap_report.md}}"
+        required: false
+      figure_audit: "{{artifact:format:figure_audit.json}}"
       final_paper_tex: "{{artifact:format:final_paper.tex}}"
       final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
       page_count: "{{artifact:format:paper_page_count.json}}"
@@ -442,6 +483,33 @@ edges:
       gate_report: "{{artifact:release_gate:release_gate_report}}"
     loop:
       id: release-cycle
+      max_iterations: 2
+  - from: release_gate
+    to: figures
+    when: 'result.decision == "revise_figures"'
+    priority: 25
+    bind:
+      release_gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-figures-cycle
+      max_iterations: 2
+  - from: release_gate
+    to: citations
+    when: 'result.decision == "revise_citations"'
+    priority: 24
+    bind:
+      release_gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-citations-cycle
+      max_iterations: 2
+  - from: release_gate
+    to: format
+    when: 'result.decision == "revise_format"'
+    priority: 23
+    bind:
+      release_gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-format-cycle
       max_iterations: 2
 
 budgets:

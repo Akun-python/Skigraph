@@ -86,8 +86,11 @@ nodes:
 
   - id: outline
     type: agent
-    skill: markdown-mermaid-writing
+    skills: [markdown-mermaid-writing, scientific-visualization, stage-skill-memory, paper-figure-contract]
     task: |
+      On revisit consume release_gate_report and repair its visual evidence gaps.
+      Missing literature evidence requires needs_input or upstream retrieval,
+      never invented corpus counts or duplicate figures to meet a quota.
       Produce the section-by-section outline with the argument each section
       carries, plus the visual plan: taxonomy tree, timeline, and
       capability-comparison matrix as Mermaid. Emit `outline.md` and
@@ -100,11 +103,21 @@ nodes:
         required: true
       - name: figures
         required: true
+      - name: figure_inventory.json
+        required: true
+      - name: figure_provenance.json
+        required: true
+      - name: figure_gap_report.md
+        required: true
+      - name: stage_skill_memory.json
+        required: true
 
   - id: draft
     type: agent
-    skill: scientific-writing
+    skills: [scientific-writing, paper-figure-contract]
     task: |
+      On revisit consume gate_report and preserve the last reviewed manuscript,
+      evidence IDs and resolved issues rather than restart without context.
       Write the survey following the outline: framing introduction, taxonomy
       presented through its axes rather than as a list, per-family analysis with
       the trade-offs made explicit, cross-cutting comparison, open problems with
@@ -119,7 +132,7 @@ nodes:
 
   - id: review
     type: agent
-    skill: peer-review
+    skills: [peer-review, paper-figure-contract]
     task: |
       Review as a survey-area expert: coverage gaps (which family or venue is
       missing), fairness of the comparison axes, whether the taxonomy carves
@@ -136,7 +149,7 @@ nodes:
 
   - id: revise
     type: agent
-    skill: scientific-writing
+    skills: [scientific-writing, paper-figure-contract]
     task: |
       Revise to resolve every review item, doing additional literature retrieval
       where the reviewer identifies a coverage gap rather than only rewording.
@@ -155,6 +168,7 @@ nodes:
     type: agent
     skill: citation-management
     task: |
+      On revisit consume release_gate_report and reverify failed source links.
       Verify the (large) bibliography: dedupe, resolve DOIs, normalise venue
       names, and emit `references.bib` plus `citation_audit.md` listing any
       reference that could not be verified and any paper cited for a claim it
@@ -169,8 +183,10 @@ nodes:
 
   - id: format
     type: agent
-    skill: venue-templates
+    skills: [venue-templates, paper-figure-contract]
     task: |
+      On revisit consume release_gate_report and repair the exact package faults.
+      Scientific edits require renewed peer review, not silent formatting changes.
       Assemble the submission package for a survey venue (ACM CSUR /
       Foundations and Trends / journal review): section structure, figure
       placement, tables, and a coverage appendix listing the corpus with family
@@ -192,12 +208,14 @@ nodes:
         required: true
       - name: coverage_appendix
         required: true
+      - name: figure_audit.json
+        required: true
 
 
 
   - id: release_gate
     type: agent
-    skill: scientific-critical-thinking
+    skills: [scientific-critical-thinking, paper-figure-contract]
     task: |
       Inspect the actual final_paper.pdf, final_paper.tex, page-count JSON,
       figures, bibliography and manuscript. Run pdfinfo and pdftotext. Verify
@@ -206,8 +224,14 @@ nodes:
       five verified references, and Methods/Results/Limitations/Reproducibility
       sections. Write release_gate_report.md with measured counts and exact
       remediation. Set decision to pass only when every hard check passes;
-      otherwise set decision to revise.
+      Otherwise set revise_figures for figure evidence/provenance repair,
+      revise_citations for bibliography/attribution repair, revise_format for
+      native compilation/layout/venue-package repair, or revise for substantive
+      manuscript repair. If evidence, permission or human approval cannot be
+      obtained in this visit, submit status needs_input; do not close it by prose.
     inputs:
+      figure_gap_report: "{{artifact:outline:figure_gap_report.md}}"
+      figure_audit: "{{artifact:format:figure_audit.json}}"
       final_paper_tex: "{{artifact:format:final_paper.tex}}"
       final_paper_pdf: "{{artifact:format:final_paper.pdf}}"
       page_count: "{{artifact:format:paper_page_count.json}}"
@@ -305,6 +329,33 @@ edges:
       gate_report: "{{artifact:release_gate:release_gate_report}}"
     loop:
       id: release-cycle
+      max_iterations: 2
+  - from: release_gate
+    to: outline
+    when: 'result.decision == "revise_figures"'
+    priority: 25
+    bind:
+      release_gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-figures-cycle
+      max_iterations: 2
+  - from: release_gate
+    to: citations
+    when: 'result.decision == "revise_citations"'
+    priority: 24
+    bind:
+      release_gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-citations-cycle
+      max_iterations: 2
+  - from: release_gate
+    to: format
+    when: 'result.decision == "revise_format"'
+    priority: 23
+    bind:
+      release_gate_report: "{{artifact:release_gate:release_gate_report}}"
+    loop:
+      id: release-format-cycle
       max_iterations: 2
 
 budgets:
