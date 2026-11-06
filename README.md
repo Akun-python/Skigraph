@@ -9,9 +9,25 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Akun-python/skill-graph">GitHub</a> ·
-  <a href=".skill-workflows/README.md">Scientific paper workflows</a> ·
-  <a href="LICENSE">Apache License 2.0</a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-2563eb?style=for-the-badge" alt="License: Apache 2.0"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-22%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Requires Node.js 22 or newer"></a>
+  <a href="tsconfig.json"><img src="https://img.shields.io/badge/Built%20with-TypeScript-3178c6?style=for-the-badge&logo=typescript&logoColor=white" alt="Built with TypeScript"></a>
+  <a href="src/adapters/mcp"><img src="https://img.shields.io/badge/Interface-CLI%20%2B%20MCP-7c3aed?style=for-the-badge" alt="CLI and MCP interfaces"></a>
+</p>
+
+<p align="center">
+  <a href="skills/README.md"><img src="https://img.shields.io/badge/Bundled%20skills-31-0d9488?style=flat-square" alt="31 bundled workflow skills"></a>
+  <a href=".skill-workflows/workflows"><img src="https://img.shields.io/badge/Paper%20workflows-5-0284c7?style=flat-square" alt="5 scientific paper workflow families"></a>
+  <a href="https://github.com/Akun-python/Skigraph/stargazers"><img src="https://img.shields.io/github/stars/Akun-python/Skigraph?style=flat-square&logo=github" alt="GitHub stars"></a>
+  <a href="https://github.com/Akun-python/Skigraph/issues"><img src="https://img.shields.io/github/issues/Akun-python/Skigraph?style=flat-square" alt="GitHub issues"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href=".skill-workflows/README.md">Workflow guide</a> ·
+  <a href="skills/README.md">Skill library</a> ·
+  <a href="#mcp-adapter">MCP integration</a> ·
+  <a href="https://github.com/Akun-python/Skigraph/issues">Report an issue</a>
 </p>
 
 <p align="center">
@@ -25,6 +41,31 @@
 </p>
 
 ---
+
+## ✨ Why SkillGraph?
+
+**Turn a long agent conversation into an inspectable workflow — with explicit inputs, real files, and bounded feedback.**
+
+| 🧩 Compose | 🔒 Validate | 🔄 Recover |
+|:---|:---|:---|
+| Combine one or more `SKILL.md` packages in each YAML stage. | Check declared artifacts, path boundaries, hashes, and optional JSON Schemas. | Persist visits and checkpoints; pause, resume, retry, and loop within budgets. |
+| **🔬 Research workflows** | **🔌 Agent integration** | **📦 Clone and build** |
+| Five paper workflow families covering empirical research, ML, medicine, bioinformatics, and surveys. | Use the CLI, MCP stdio server, or a custom host agent. | All 31 registered skills are bundled in `skills/`; no separate `.vendor` checkout needed. |
+
+> [!IMPORTANT]
+> SkillGraph is an orchestration engine, not a scientific certification service or an OS sandbox. Artifact checks, passing tests, and a compiled PDF do **not** establish scientific validity, ethics approval, or publication readiness. Host tools retain their own permissions; external models, data, Python packages, and TeX tooling must be configured separately.
+
+<details>
+<summary><strong>📚 Explore the documentation</strong></summary>
+
+- [Quick start](#quick-start) · [Agent driver](#real-agent-driver)
+- [How it works](#how-the-mechanism-works) · [Core concepts](#core-concepts)
+- [Scientific workflows](#scientific-paper-workflows) · [Bundled skills](skills/README.md)
+- [Workflow contract](#workflow-contract) · [CLI commands](#cli-commands) · [MCP adapter](#mcp-adapter)
+- [Quality checks](#validation-and-quality-gates) · [Security](#security-and-stability)
+- [Contributing](#contributing) · [License](#license)
+
+</details>
 
 ## What SkillGraph Means
 
@@ -53,6 +94,20 @@ remains responsible for the actual scientific or engineering work. This makes a
 workflow portable across Pi, an MCP client, a CLI agent, or a custom runtime.
 
 ## How the Mechanism Works
+
+```mermaid
+flowchart LR
+    A["YAML workflow"] --> B["Resolve inputs + skills"]
+    B --> C["Host agent + tools"]
+    C --> D["Files + node_result.json"]
+    D --> E{"Contract checks"}
+    E -->|accepted| F["Persist state + route"]
+    E -->|invalid| G["Reject submission"]
+    F --> H["Next stage / bounded repair"]
+    H --> B
+```
+
+The host agent executes tools; the engine validates submissions and routes the graph.
 
 SkillGraph does not ask an agent to complete a long task in one unstructured
 conversation. It turns the task into a sequence of explicit state transitions.
@@ -142,10 +197,11 @@ can select clinical-cohort analysis or meta-analysis; a bioinformatics workflow
 can select bulk RNA-seq, single-cell, or microbiome analysis. Each branch
 produces its own artifacts and converges through explicitly bound inputs.
 
-Loops create feedback with provenance. A peer review can return a revised
-manuscript to the review node, while a final release gate can return a failed
-paper to drafting. The next visit receives the new artifact path, so the graph
-never mistakes an old draft for the revision being evaluated.
+Loops declare feedback paths with provenance. Paper release workflows distinguish
+figure, citation, formatting, and substantive manuscript repairs, rather than
+sending every failure back to drafting. Revision bindings and downstream content
+inheritance still require end-to-end validation; a completed stage alone does not
+prove that every later consumer used the revised manuscript.
 
 ## Core Concepts
 
@@ -243,10 +299,11 @@ A review loop is a real graph loop, not a vague instruction:
     max_iterations: 3
 ```
 
-The latest revision is bound into the next review, so the reviewer does not
-accidentally inspect the original draft. Scientific paper workflows also use a
-release gate: LaTeX compilation, page count, word count, figures, references,
-and reproducibility must pass before the run reaches its terminal node.
+This declares that the revised manuscript should be used by the next review;
+it is not proof of end-to-end manuscript inheritance. Scientific workflows also
+declare release checks for native LaTeX/PDF compilation, venue-specific formatting,
+figures, references, and reproducibility. Missing scientific evidence or human
+approval must remain unresolved, not be closed by repeated rewriting.
 
 ## What This Provides
 
@@ -262,7 +319,9 @@ and reproducibility must pass before the run reaches its terminal node.
 - Scientific workflow bundles for algorithms, medical research, bioinformatics,
   surveys, experiments, LaTeX papers, figures, and PDF release gates.
 
-## Scientific Paper Workflows
+<a id="scientific-paper-workflows"></a>
+
+## 🔬 Scientific Paper Workflows
 
 The repository includes five workflow families under
 `.skill-workflows/workflows/`:
@@ -305,9 +364,16 @@ real data / code
     → release manifest
 ```
 
-## Quick Start
+<a id="quick-start"></a>
+
+## 🚀 Quick Start
+
+Requires **Node.js 22+** and npm. Clone the repository to include both workflows
+and their bundled skills:
 
 ```bash
+git clone https://github.com/Akun-python/Skigraph.git
+cd Skigraph
 npm install
 npm run build
 ```
@@ -348,7 +414,9 @@ node dist/cli.js submit <run-id> <node-id> <visit-id>
 Do not pass a result path from another visit. The current visit's
 `node_result.json` is the canonical submission.
 
-## Real Agent Driver
+<a id="real-agent-driver"></a>
+
+## 🤖 Real Agent Driver
 
 For the included scientific workflows, `scripts/agent-run.mjs` connects the
 stage graph to an OpenAI-compatible model configured in
@@ -471,7 +539,9 @@ skill-graph submit <run-id> <node-id> <visit-id> [result-path]
 skill-graph resume <run-id>
 ```
 
-## MCP Adapter
+<a id="mcp-adapter"></a>
+
+## 🔌 MCP Adapter
 
 Build the package and configure an MCP client to run the stdio server:
 
@@ -503,11 +573,14 @@ The host agent remains responsible for reading the active skill bundle, doing
 the work, writing artifacts, and submitting the result. The graph engine never
 pretends to execute an LLM stage itself.
 
-## Validation and Quality Gates
+<a id="validation-and-quality-gates"></a>
 
-Run all static and graph checks:
+## ✅ Validation and Quality Gates
+
+Build first, then run the static and graph checks (tests execute built files):
 
 ```bash
+npm run build
 npm run qa
 ```
 
@@ -545,7 +618,40 @@ compiled PDF.
 - API keys are read from the host environment/configuration and are never
   stored in workflow files or committed to the repository.
 
-## License
+<a id="contributing"></a>
+
+## 🤝 Contributing
+
+Bug reports, workflow examples, documentation improvements, and focused pull
+requests are welcome.
+
+1. Open an [issue](https://github.com/Akun-python/Skigraph/issues) describing the problem or proposed change. Include a minimal reproduction for bugs.
+2. Keep changes scoped; add regression tests when engine or routing behavior changes.
+3. Run `npm run build && npm run qa` before submitting a pull request.
+4. Never include credentials, private datasets, or unpublished manuscripts without authorization. Preserve third-party license notices.
+
+**Useful starting points:** [engine](src/core/), [tests](src/tests/),
+[workflow definitions](.skill-workflows/workflows/), [skill library](skills/README.md).
+
+## 🧭 Project Status & Scope
+
+This is an evolving project (`0.1.0` in `package.json`). Static audits and routing
+tests cover engineering contracts, not the scientific correctness of generated
+research. Content-level convergence, revision inheritance, and real model-driven
+end-to-end workflows need further validation. Reports of reproducible failures
+are especially valuable.
+
+## 🙏 Acknowledgments
+
+The bundled scientific skill library derives from
+[K-Dense scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills).
+See [skill provenance](skills/README.md) and the retained
+[upstream license](skills/LICENSE.K-Dense.md). Additional notices embedded in
+third-party assets remain applicable.
+
+<a id="license"></a>
+
+## 📄 License
 
 Copyright 2026 Akun-python. Licensed under the [Apache License, Version 2.0](LICENSE).
 Third-party skills and dependencies retain their respective licenses.

@@ -3,7 +3,18 @@
 <p align="center"><strong>Agent Skill, 과학 연구 워크플로, 재현 가능한 산출물을 위한 계약 검증 오케스트레이션 엔진.</strong></p>
 <p align="center">언어: <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a></p>
 
-## 프로젝트 개념
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-2563eb?style=for-the-badge" alt="Apache 2.0"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-22%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js 22+"></a>
+  <a href="skills/README.md"><img src="https://img.shields.io/badge/Bundled%20skills-31-0d9488?style=for-the-badge" alt="31 bundled skills"></a>
+</p>
+
+<p align="center"><a href="#빠른-시작">🚀 빠른 시작</a> · <a href=".skill-workflows/README.md">📚 워크플로 문서</a> · <a href="skills/README.md">🧩 스킬 모음</a> · <a href="https://github.com/Akun-python/Skigraph/issues">💬 문제 보고</a></p>
+
+> [!IMPORTANT]
+> 이 도구는 오케스트레이션 엔진이며 과학 인증 서비스나 OS 샌드박스가 아닙니다. 테스트와 PDF 컴파일 성공은 과학적 타당성이나 투고 준비를 보장하지 않습니다. 모델, 데이터, 전문 도구는 별도 설정이 필요하며 수정본 계승과 실제 엔드투엔드 실행은 추가 검증이 필요합니다.
+
+## ✨ 프로젝트 개념
 
 SkillGraph는 AI Agent와 Agent Skill 사이에서 복잡한 작업을 검증 가능하고, 재개 가능하며, 관찰 가능한 워크플로 그래프로 변환합니다.
 
@@ -42,7 +53,7 @@ runner는 나열된 모든 `SKILL.md`를 로드해 실험 설계, 검정력 분�
 
 ### 분기, 루프와 품질 피드백
 
-의료 워크플로는 임상 코호트와 meta-analysis로 분기할 수 있고, 생정보학 워크플로는 bulk RNA-seq, 단일세포, 마이크로바이옴으로 분기할 수 있습니다. 동료 심사 수정본은 review로 돌아가며, release 품질 게이트 실패는 draft로 돌아갑니다.
+의료 워크플로는 임상 코호트와 meta-analysis로 분기할 수 있고, 생정보학 워크플로는 bulk RNA-seq, 단일세포, 마이크로바이옴으로 분기할 수 있습니다. review/revise 경로가 선언되어 있으며 release 품질 게이트는 실패 유형에 따라 figures, citations, format 또는 draft로 돌아갑니다. 수정본이 모든 후속 단계에 계승되는지는 엔드투엔드 검증이 필요합니다.
 
 ## 주요 기능
 
@@ -69,7 +80,11 @@ runner는 나열된 모든 `SKILL.md`를 로드해 실험 설계, 검정력 분�
 
 ## 빠른 시작
 
+**Node.js 22+**와 npm이 필요합니다. 등록된 스킬 31개가 포함되어 별도 `.vendor` checkout이 필요하지 않습니다.
+
 ```bash
+git clone https://github.com/Akun-python/Skigraph.git
+cd Skigraph
 npm install
 npm run build
 node dist/cli.js list
@@ -92,6 +107,12 @@ npm run smoke
 npm test
 ```
 
-## 라이선스
+## 🤝 기여하기
+
+최소 재현 예제가 있는 [Issue](https://github.com/Akun-python/Skigraph/issues)나 범위를 좁힌 PR을 환영합니다. 제출 전 `npm run build && npm run qa`를 실행하고 자격 증명, 무단 데이터, 미발표 원고는 포함하지 마세요.
+
+과학 스킬의 출처와 MIT 라이선스는 [skills/README.md](skills/README.md) 및 [업스트림 라이선스](skills/LICENSE.K-Dense.md)를 참고하세요.
+
+## 📄 라이선스
 
 Copyright 2026 Akun-python. 이 프로젝트는 [Apache License 2.0](LICENSE)을 따릅니다. 타사 Skill과 의존성에는 각각의 라이선스가 적용됩니다.
