@@ -5,7 +5,7 @@ complete paper package, built on the
 [scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills)
 `SKILL.md` contracts.
 
-- Skill contracts: `.vendor/scientific-agent-skills/skills/<id>/SKILL.md`
+- Skill contracts: `skills/<id>/SKILL.md` (bundled in this repository)
 - Skill registry: `.skill-workflows/graph/skills.yaml` (32 skills)
 - Workflows: `.skill-workflows/workflows/*.yaml`
 
@@ -194,9 +194,11 @@ Rules the loader enforces, learned the hard way:
 
 ## Notes
 
-- `.vendor/scientific-agent-skills` is git-ignored. Re-clone
-  `https://github.com/K-Dense-AI/scientific-agent-skills.git` there when the
-  vendor copy is missing.
+- Workflow dependencies are bundled under `skills/`, including the local
+  Apache-2.0 contracts. The upstream K-Dense checkout under `.vendor/` is
+  optional and git-ignored; it is useful only for refreshing vendored skills.
+- Bundled third-party skill metadata and the K-Dense MIT license are retained
+  under `skills/`.
 - Skill hashes are pinned in `manifest.json` at run start; edits to a skill
   require a fresh run.
 - Workflow and graph YAML edits are picked up by fresh runs; active runs keep

@@ -159,7 +159,7 @@ while a run is paused, the run refuses to continue silently.
 skills:
   - id: literature-review
     version: 1
-    path: .vendor/scientific-agent-skills/skills/literature-review
+    path: skills/literature-review
     produces: [literature-review]
 ```
 
@@ -407,8 +407,11 @@ src/
   adapters/                # MCP and host-agent adapters
   tests/                   # regression and workflow-contract tests
 
+skills/
+  <id>/SKILL.md            # bundled workflow skill contracts
+
 .vendor/
-  scientific-agent-skills/ # optional vendored skill library, git-ignored
+  scientific-agent-skills/ # optional upstream checkout, git-ignored
 ```
 
 The loader also accepts `.skill-graph` as a project root. Configure roots with:

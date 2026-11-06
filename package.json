@@ -7,7 +7,9 @@
     "dist",
     "README.md",
     "LICENSE",
-    "examples"
+    "examples",
+    "skills",
+    ".skill-workflows"
   ],
   "bin": {
     "skill-graph": "dist/cli.js",
